@@ -3,6 +3,7 @@
  * Manages hover, selection, and interaction states for map features across all layers
  */
 import { MapboxAPI } from './mapbox-api.js';
+import { handlerLoader } from './inspection-handler-loader.js';
 
 export class MapFeatureStateManager extends EventTarget {
     constructor(map, mapboxAPI = null) {
@@ -83,12 +84,10 @@ export class MapFeatureStateManager extends EventTarget {
         const layerId = layerConfig.id;
 
         if (this._registeredLayers.has(layerId)) {
-            // Layer already registered, skipping
             return;
         }
 
         this._registeredLayers.set(layerId, layerConfig);
-        // Layer registered successfully
 
         // Check if this is a raster layer that doesn't need feature interaction
         if (this._isRasterLayer(layerConfig)) {
@@ -392,7 +391,8 @@ export class MapFeatureStateManager extends EventTarget {
                 lngLat
             });
 
-            // Removed verbose selection logging
+            // Execute inspection handlers if configured
+            this._executeInspectionHandler(feature, layerId, lngLat);
         });
 
         // Update line layer sort keys for z-ordering
@@ -539,8 +539,6 @@ export class MapFeatureStateManager extends EventTarget {
             });
         }
 
-        // Removed verbose selection clearing logging
-
         return clearedFeatures;
     }
 
@@ -610,6 +608,9 @@ export class MapFeatureStateManager extends EventTarget {
         const layerConfig = this._registeredLayers.get(layerId);
         if (!layerConfig) return false;
 
+        // Check if inspection is explicitly disabled
+        if (layerConfig.inspect === false) return false;
+
         // Raster layers are registered but not interactive for feature selection
         return !this._isRasterLayer(layerConfig);
     }
@@ -621,6 +622,51 @@ export class MapFeatureStateManager extends EventTarget {
      */
     isLayerRegistered(layerId) {
         return this._registeredLayers.has(layerId);
+    }
+
+    /**
+     * Set hover state for a specific feature
+     * @param {string} layerId - Layer ID
+     * @param {string|number} featureId - Feature ID
+     * @param {boolean} hoverState - Whether the feature should be hovered
+     */
+    setFeatureHoverState(layerId, featureId, hoverState) {
+        if (!layerId || featureId === undefined || featureId === null) {
+            return;
+        }
+
+        const compositeKey = this._getCompositeKey(layerId, featureId);
+        const featureState = this._featureStates.get(compositeKey);
+
+        if (!featureState) {
+            return;
+        }
+
+        if (hoverState) {
+            featureState.isHovered = true;
+            this._setMapboxFeatureState(featureId, layerId, { hover: true });
+        } else {
+            featureState.isHovered = false;
+            this._removeMapboxFeatureState(featureId, layerId, 'hover');
+        }
+    }
+
+    /**
+     * Clear all hover states for a specific layer
+     * @param {string} layerId - Layer ID
+     */
+    clearLayerHoverStates(layerId) {
+        if (!layerId) {
+            return;
+        }
+
+        this._featureStates.forEach((featureState, compositeKey) => {
+            if (featureState.layerId === layerId && featureState.isHovered) {
+                featureState.isHovered = false;
+                const featureId = this._getFeatureId(featureState.feature);
+                this._removeMapboxFeatureState(featureId, layerId, 'hover');
+            }
+        });
     }
 
     /**
@@ -1087,6 +1133,54 @@ export class MapFeatureStateManager extends EventTarget {
     }
 
     /**
+     * Execute inspection handler if configured for the layer
+     * @param {Object} feature - Selected feature
+     * @param {string} layerId - Layer ID
+     * @param {Object} lngLat - Click coordinates
+     */
+    async _executeInspectionHandler(feature, layerId, lngLat) {
+        // Get layer config
+        const layerConfig = this._registeredLayers.get(layerId);
+
+        if (!layerConfig || !layerConfig.inspect?.onClick) {
+            return;
+        }
+
+        const handlerName = layerConfig.inspect.onClick;
+
+        // Determine atlas name from layer config
+        const atlasName = layerConfig._sourceAtlas || 'index';
+
+        try {
+            // Execute handler and get HTML
+            const customHTML = await handlerLoader.executeHandler(
+                atlasName,
+                handlerName,
+                {
+                    feature,
+                    layerId,
+                    layerConfig,
+                    map: this._map,
+                    lngLat
+                }
+            );
+
+            if (customHTML) {
+                // Emit event with custom HTML for inspector to display
+                this._emitStateChange('feature-inspection-data', {
+                    featureId: this._getFeatureId(feature),
+                    layerId,
+                    feature,
+                    customHTML,
+                    lngLat
+                });
+            }
+        } catch (error) {
+            console.error(`[StateManager] Error executing inspection handler for ${layerId}:`, error);
+        }
+    }
+
+    /**
      * Set up cleanup routine to remove stale features
      */
     _setupCleanup() {
@@ -1320,7 +1414,6 @@ export class MapFeatureStateManager extends EventTarget {
         });
 
         if (failedLayers.length > 0) {
-            console.debug(`[StateManager] Retrying ${failedLayers.length} failed layer registration(s)`);
             failedLayers.forEach(config => {
                 this._setupLayerEventsWithRetry(config);
             });

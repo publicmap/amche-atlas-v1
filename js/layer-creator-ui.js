@@ -93,6 +93,16 @@ export class LayerConfigGenerator {
     }
 
     /**
+     * Check if URL has actual tile coordinates (z/x/y pattern) with or without extension
+     * @param {string} url - URL to check
+     * @returns {boolean} True if it's a tile URL with coordinates
+     */
+    static isTileUrl(url) {
+        // Match pattern like /15/23112/14953 or /12/2875/1827.png
+        return /\/\d+\/\d+\/\d+(\.(pbf|mvt|png|jpg|jpeg|webp))?($|\?)/i.test(url);
+    }
+
+    /**
      * Convert a .pbf tile URL with actual coordinates to a template URL
      * @param {string} url - URL with actual tile coordinates
      * @returns {string} Template URL with {z}/{x}/{y} placeholders
@@ -100,6 +110,22 @@ export class LayerConfigGenerator {
     static convertPbfTileUrlToTemplate(url) {
         // Replace pattern /12/2875/1827.pbf with /{z}/{x}/{y}.pbf
         return url.replace(/\/\d+\/\d+\/\d+\.(pbf|mvt)($|\?)/i, '/{z}/{x}/{y}.$1$2');
+    }
+
+    /**
+     * Convert a tile URL with actual coordinates to a template URL
+     * @param {string} url - URL with actual tile coordinates
+     * @param {string} defaultExtension - Optional extension to add if none present
+     * @returns {string} Template URL with {z}/{x}/{y} placeholders
+     */
+    static convertTileUrlToTemplate(url, defaultExtension = null) {
+        // Replace pattern /15/23112/14953 or /15/23112/14953.ext with /{z}/{x}/{y} or /{z}/{x}/{y}.ext
+        return url.replace(/\/\d+\/\d+\/\d+(\.(pbf|mvt|png|jpg|jpeg|webp))?($|\?)/i, (match, ext, extName, end) => {
+            if (!ext && defaultExtension) {
+                return `/{z}/{x}/{y}.${defaultExtension}${end}`;
+            }
+            return `/{z}/{x}/{y}${ext || ''}${end}`;
+        });
     }
 
     /**
@@ -114,7 +140,12 @@ export class LayerConfigGenerator {
         if (/\.geojson($|\?)/i.test(url)) return 'geojson';
         if (this.isPbfTileUrl(url)) return 'vector';
         if (url.includes('{z}') && (url.includes('.pbf') || url.includes('.mvt') || url.includes('vector.openstreetmap.org') || url.includes('/vector/'))) return 'vector';
-        if (url.includes('{z}') && (url.includes('.png') || url.includes('.jpg'))) return 'raster';
+        if (url.includes('{z}') && (url.includes('.png') || url.includes('.jpg') || url.includes('.webp'))) return 'raster';
+        if (url.includes('{x}') && url.includes('{y}') && url.includes('{z}')) return 'raster';
+        if (this.isTileUrl(url)) {
+            const hasVectorExt = /\.(pbf|mvt)($|\?)/i.test(url);
+            return hasVectorExt ? 'vector' : 'raster';
+        }
         if (/\.json($|\?)/i.test(url)) return 'atlas';
         return 'unknown';
     }
@@ -235,10 +266,11 @@ export class LayerConfigGenerator {
             };
 
             const isEarthEngine = url.includes('earthengine.googleapis.com');
+            const isAutoDetected = metadata?.autoDetected;
 
             config = {
                 title: metadata ? cleanTitle(metadata.title) : (isEarthEngine ? 'Google Earth Engine Image' : 'Raster Layer'),
-                description: metadata ? formatDescription(metadata.description) : (isEarthEngine ? "XYZ tiles generated from <a href='https://developers.google.com/earth-engine/datasets/'>Google Earth Engine</a>" : undefined),
+                description: metadata ? formatDescription(metadata.description) : (isEarthEngine ? "XYZ tiles generated from <a href='https://developers.google.com/earth-engine/datasets/'>Google Earth Engine</a>" : (isAutoDetected ? "Auto-detected as raster tiles. If tiles don't load, try changing type to 'vector' and add a sourceLayer." : undefined)),
                 date: metadata ? metadata.date : undefined,
                 type: 'tms',
                 id: metadata ? `mapwarper-${metadata.mapId}` : (isEarthEngine ? 'earthengine-' + Math.random().toString(36).slice(2, 8) : 'raster-' + Math.random().toString(36).slice(2, 8)),
@@ -328,10 +360,18 @@ export class LayerConfigGenerator {
     static async handleUrlInput(url) {
         let actualUrl = url;
         let tilejson = null;
+        let metadata = null;
+        let wasConverted = false;
 
         // Convert .pbf tile URLs with actual coordinates to template URLs
         if (this.isPbfTileUrl(url)) {
             actualUrl = this.convertPbfTileUrlToTemplate(url);
+            wasConverted = true;
+        }
+        // Convert generic tile URLs with actual coordinates to template URLs
+        else if (this.isTileUrl(url)) {
+            actualUrl = this.convertTileUrlToTemplate(url);
+            wasConverted = true;
         }
 
         // Handle Mapbox tileset IDs (e.g., planemad.np3cjv7ukkcy)
@@ -388,7 +428,11 @@ export class LayerConfigGenerator {
             }
         }
 
-        return this.makeLayerConfig(actualUrl, tilejson, null);
+        if (wasConverted && type === 'raster') {
+            metadata = { autoDetected: true };
+        }
+
+        return this.makeLayerConfig(actualUrl, tilejson, metadata);
     }
 
     /**
@@ -429,132 +473,3 @@ export class LayerConfigGenerator {
     }
 }
 
-export class LayerCreatorUI {
-    /**
-     * Create and inject the dialog HTML only once
-     */
-    static createLayerCreatorDialog() {
-        if (document.getElementById('layer-creator-dialog')) return;
-        const dialogHtml = `
-        <sl-dialog id="layer-creator-dialog" label="Add new data source or atlas" class="layer-creator-modal">
-            <form id="layer-creator-form" class="flex flex-col gap-4">
-                <sl-select id="layer-preset-dropdown" placeholder="Select from current atlas layers">
-                    <sl-icon slot="prefix" name="layers"></sl-icon>
-                </sl-select>
-                <div class="text-xs text-gray-300">Or add a new data source:</div>
-                <sl-input id="layer-url" placeholder="URL to map data or atlas configuration JSON">
-                    <sl-icon slot="prefix" name="link"></sl-icon>
-                </sl-input>
-                <div id="layer-url-help" class="text-xs text-gray-300">
-                    Supported: Raster/Vector tile URLs, GeoJSON, Atlas JSON, MapWarper URLs, Mapbox tileset IDs, Earth Engine tiles.<br>
-                    Examples:<br>
-                    <span class="block">Mapbox: <code>planemad.np3cjv7ukkcy</code> (tileset ID)</span>
-                    <span class="block">Raster: <code>https://warper.wmflabs.org/maps/tile/4749/{z}/{x}/{y}.png</code></span>
-                    <span class="block">Earth Engine: <code>https://earthengine.googleapis.com/v1/projects/.../maps/.../tiles/{z}/{x}/{y}</code></span>
-                    <span class="block">MapWarper: <code>https://mapwarper.net/maps/95676#Export_tab</code></span>
-                    <span class="block">MapWarper: <code>https://warper.wmflabs.org/maps/8940#Show_tab</code></span>
-                    <span class="block">Vector: <code>https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt</code></span>
-                    <span class="block">Vector (single tile): <code>https://bhuvanmaps.nrsc.gov.in/tileserver2/mmi.road_ohy/12/2875/1827.pbf</code></span>
-                    <span class="block">GeoJSON: <code>https://gist.githubusercontent.com/planemad/e5ccc47bf2a1aa458a86d6839476f539/raw/6922fcc2d5ffd4d58b0fb069b9f57334f13cd953/goa-water-bodies.geojson</code></span>
-                    <span class="block">Atlas: <code>https://jsonkeeper.com/b/RQ0Y</code></span>
-                </div>
-                <sl-textarea id="layer-config-json" rows="10" resize="vertical" class="font-mono text-xs" placeholder="Atlas Layer JSON"></sl-textarea>
-                <div class="flex justify-end gap-2">
-                    <sl-button type="button" variant="default" id="cancel-layer-creator" class="layer-creator-btn">Cancel</sl-button>
-                    <sl-button type="submit" variant="primary" id="submit-layer-creator" class="layer-creator-btn">Add to map</sl-button>
-                </div>
-            </form>
-        </sl-dialog>
-        `;
-        $(document.body).append(dialogHtml);
-    }
-
-    /**
-     * Opens the layer creator dialog
-     */
-    static openLayerCreatorDialog() {
-        this.createLayerCreatorDialog();
-        const dialog = document.getElementById('layer-creator-dialog');
-        const presetDropdown = document.getElementById('layer-preset-dropdown');
-        const urlInput = document.getElementById('layer-url');
-        const configTextarea = document.getElementById('layer-config-json');
-        const form = document.getElementById('layer-creator-form');
-        const cancelBtn = document.getElementById('cancel-layer-creator');
-
-        configTextarea.value = '';
-        urlInput.value = '';
-
-        const currentLayers = LayerConfigGenerator.getCurrentAtlasLayers();
-        presetDropdown.innerHTML = '';
-
-        const emptyOption = document.createElement('sl-option');
-        emptyOption.value = '';
-        emptyOption.textContent = 'Duplicate existing layer...';
-        presetDropdown.appendChild(emptyOption);
-
-        currentLayers.forEach(layer => {
-            const option = document.createElement('sl-option');
-            option.value = layer.id;
-            option.dataset.config = JSON.stringify(layer.config);
-            option.innerHTML = `
-                <div class="flex justify-between items-center w-full">
-                    <span class="flex-1 truncate">${layer.title}</span>
-                    <span class="text-xs text-gray-500 ml-2 flex-shrink-0">${layer.format}</span>
-                </div>
-            `;
-            presetDropdown.appendChild(option);
-        });
-
-        dialog.show();
-
-        let lastUrl = '';
-
-        presetDropdown.onchange = null;
-        urlInput.oninput = null;
-        form.onsubmit = null;
-
-        presetDropdown.addEventListener('sl-change', (e) => {
-            const selectedOption = presetDropdown.querySelector(`sl-option[value="${e.target.value}"]`);
-            if (selectedOption && selectedOption.dataset.config) {
-                const config = JSON.parse(selectedOption.dataset.config);
-                configTextarea.value = JSON.stringify(config, null, 2);
-                urlInput.value = '';
-            }
-        });
-
-        urlInput.addEventListener('input', async (e) => {
-            const url = e.target.value.trim();
-            if (!url || url === lastUrl) return;
-            lastUrl = url;
-            presetDropdown.value = '';
-            configTextarea.value = 'Loading...';
-            const config = await LayerConfigGenerator.handleUrlInput(url);
-            configTextarea.value = JSON.stringify(config, null, 2);
-        });
-
-        cancelBtn.onclick = () => dialog.hide();
-
-        form.onsubmit = (e) => {
-            e.preventDefault();
-            let configJson = configTextarea.value.trim();
-            if (!configJson) return;
-            try {
-                const configObj = JSON.parse(configJson);
-                LayerConfigGenerator.fitBoundsToMapwarperLayer(configObj);
-
-                let baseUrl = LayerConfigGenerator.getShareableUrl();
-                let url = new URL(baseUrl);
-                const hash = url.hash;
-                let layers = url.searchParams.get('layers') || '';
-                let jsonString = JSON.stringify(configObj);
-                jsonString = jsonString.replace(/'/g, "\\'").replace(/"/g, "'");
-                layers = layers ? jsonString + ',' + layers : jsonString;
-                url.searchParams.set('layers', layers);
-                url.hash = hash;
-                window.location.href = url.toString();
-            } catch (err) {
-                alert('Invalid JSON in config');
-            }
-        };
-    }
-}

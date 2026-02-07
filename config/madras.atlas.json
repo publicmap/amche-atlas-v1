@@ -11,9 +11,41 @@
     ],
     "zoom": 12.3
   },
-  "ui": {
-    "title": "Maps வரைபடங்கள்",
-    "shareButton": "Share वांटो"
+  "geojson": {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+          "coordinates": [
+            [
+              [
+                80.36023407852207,
+                13.232420909622846
+              ],
+              [
+                80.04088626033939,
+                13.232420909622846
+              ],
+              [
+                80.04088626033939,
+                12.824592999979828
+              ],
+              [
+                80.36023407852207,
+                12.824592999979828
+              ],
+              [
+                80.36023407852207,
+                13.232420909622846
+              ]
+            ]
+          ],
+          "type": "Polygon"
+        }
+      }
+    ]
   },
   "layers": [
     {
@@ -225,10 +257,6 @@
       "headerImage": null,
       "bbox": "80.2332728,13.0305666,80.3423048,13.2795135",
       "initiallyChecked": false
-    },
-    {
-      "initiallyChecked": true,
-      "id": "mapbox-satellite"
     }
   ]
 }

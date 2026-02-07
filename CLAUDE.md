@@ -148,3 +148,21 @@ Example atlas structure:
 - Dev branch deploys to https://amche.in/dev (testing)
 - Deployment via GitHub Pages with ~1 minute deploy time
 - Use `git push origin HEAD:dev --force` to test changes live
+
+**IMPORTANT: New HTML Files and Directories**
+When adding new HTML files or directories, they MUST be added to BOTH build configurations:
+
+1. **Root-level HTML files** (e.g., `map-inspector.html`):
+   - Add to `vite.config.js` in `build.rollupOptions.input` object
+   - Add to `webpack.config.js` in `CopyWebpackPlugin` patterns array
+   - Example: `'map-inspector': 'map-inspector.html'`
+
+2. **Special purpose directories** (e.g., `/bus/`, `/game/`, `/warper/`):
+   - Add to `webpack.config.js` in `CopyWebpackPlugin` patterns array
+   - Example: `{ from: 'warper', to: 'warper' }`
+
+Without these updates, new files/directories will work locally but return 404 on GitHub Pages.
+
+**Testing deployment configuration:**
+- Run `npm test` to verify all HTML files and directories are properly configured
+- The test suite includes checks for missing deployment configurations

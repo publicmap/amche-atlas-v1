@@ -60,7 +60,6 @@ export class MapboxAPI {
             try {
                 this._updateLayerTime(groupId, config, timeString);
             } catch (error) {
-                console.error(`[MapboxAPI] Error updating time for layer ${groupId}:`, error);
             }
         });
     }
@@ -93,8 +92,6 @@ export class MapboxAPI {
             case 'img':
                 this._updateImageLayerTime(groupId, config, newUrl);
                 break;
-            default:
-                console.warn(`[MapboxAPI] Time updates not supported for layer type: ${config.type}`);
         }
     }
 
@@ -208,12 +205,27 @@ export class MapboxAPI {
             }
             this._map.removeSource(sourceId);
 
+            let tileUrl = newUrl;
+
+            // Wrap with proxy if configured
+            if (config.proxyUrl) {
+                const encodedTileUrl = encodeURIComponent(tileUrl)
+                    .replace(/%7Bz%7D/g, '{z}')
+                    .replace(/%7Bx%7D/g, '{x}')
+                    .replace(/%7By%7D/g, '{y}');
+                tileUrl = `${config.proxyUrl}?url=${encodedTileUrl}`;
+                if (config.proxyReferer) {
+                    const encodedReferer = encodeURIComponent(config.proxyReferer);
+                    tileUrl += `&referer=${encodedReferer}`;
+                }
+            }
+
             // Add source with new URL
             const sourceConfig = {
                 type: 'raster',
                 tileSize: 256,
                 maxzoom: config.maxzoom || 22,
-                tiles: [newUrl]
+                tiles: [tileUrl]
             };
 
             if (config.attribution) {
@@ -403,7 +415,6 @@ export class MapboxAPI {
             // Remove from time-based layers tracking
             if (this._timeBasedLayers.has(groupId)) {
                 this._timeBasedLayers.delete(groupId);
-                console.log(`[MapboxAPI] Removed time-based layer tracking: ${groupId}`);
             }
 
             switch (config.type) {
@@ -481,7 +492,6 @@ export class MapboxAPI {
                     .map(styleLayer => styleLayer.id);
 
                 if (layerIds.length === 0) {
-                    console.debug(`[MapboxAPI] No style layers found for sourceLayer: ${layer.sourceLayer}`);
                 }
 
                 layerIds.forEach(layerId => {
@@ -489,8 +499,6 @@ export class MapboxAPI {
                         // When creating/showing a style layer, make sure visibility matches the expected state
                         this._map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
                         totalLayersProcessed++;
-                    } else {
-                        console.warn(`[MapboxAPI] Layer ${layerId} not found in map style`);
                     }
                 });
             });
@@ -510,7 +518,7 @@ export class MapboxAPI {
     }
 
     // Vector layer methods
-    _createVectorLayer(groupId, config, visible) {
+    async _createVectorLayer(groupId, config, visible) {
         if (visible && config.blink) {
             this._setupBlinking(groupId, config);
         }
@@ -542,7 +550,7 @@ export class MapboxAPI {
             this._map.addSource(sourceId, sourceConfig);
 
             // Add layers based on style properties
-            this._addVectorLayers(groupId, config, sourceId, visible);
+            await this._addVectorLayers(groupId, config, sourceId, visible);
         } else {
             // Update visibility only
             this._updateVectorLayerVisibility(groupId, config, visible);
@@ -551,7 +559,7 @@ export class MapboxAPI {
         return true;
     }
 
-    _addVectorLayers(groupId, config, sourceId, visible) {
+    async _addVectorLayers(groupId, config, sourceId, visible) {
         // Get default styles for checking what layer types should be created
         const defaultStyles = this._defaultStyles.vector || {};
 
@@ -640,7 +648,10 @@ export class MapboxAPI {
         // Add text layer
         if (hasTextStyles) {
             // Filter style to only include symbol/text-related properties
-            const symbolStyle = this._filterStyleForLayerType(config.style, 'symbol');
+            let symbolStyle = this._filterStyleForLayerType(config.style, 'symbol');
+
+            // Prepare custom icon images if present
+            symbolStyle = await this._prepareSymbolLayerIcons(symbolStyle);
 
             const layerConfig = this._createLayerConfig({
                 id: `vector-layer-${groupId}-text`,
@@ -746,7 +757,22 @@ export class MapboxAPI {
             if (config.url.startsWith('mapbox://')) {
                 sourceConfig.url = config.url;
             } else {
-                sourceConfig.tiles = [config.url];
+                let tileUrl = config.url;
+
+                // Wrap with proxy if configured
+                if (config.proxyUrl) {
+                    const encodedTileUrl = encodeURIComponent(tileUrl)
+                        .replace(/%7Bz%7D/g, '{z}')
+                        .replace(/%7Bx%7D/g, '{x}')
+                        .replace(/%7By%7D/g, '{y}');
+                    tileUrl = `${config.proxyUrl}?url=${encodedTileUrl}`;
+                    if (config.proxyReferer) {
+                        const encodedReferer = encodeURIComponent(config.proxyReferer);
+                        tileUrl += `&referer=${encodedReferer}`;
+                    }
+                }
+
+                sourceConfig.tiles = [tileUrl];
             }
 
             if (config.attribution) {
@@ -945,10 +971,6 @@ export class MapboxAPI {
             // Add error handling for failed tile requests
             this._map.on('error', (e) => {
                 if (e.sourceId === sourceId) {
-                    console.warn(`[MapboxAPI] WMTS layer '${groupId}' tile load error:`, e.error);
-                    console.warn(`[MapboxAPI] If you see 400 errors, the layer may not be available in EPSG:3857 projection`);
-                    console.warn(`[MapboxAPI] Original URL: ${config.url}`);
-                    console.warn(`[MapboxAPI] Converted URL: ${tileUrl}`);
                 }
             });
         } else {
@@ -991,9 +1013,6 @@ export class MapboxAPI {
                 xyzUrl = xyzUrl.replace(/tilematrixset=[^&]+/, 'tilematrixset=GoogleMapsCompatible_Level9');
             }
         }
-
-        // Log the converted URL for debugging
-        console.debug(`[MapboxAPI] Converted WMTS URL: ${wmtsUrl} -> ${xyzUrl}`);
 
         return xyzUrl;
     }
@@ -1094,9 +1113,6 @@ export class MapboxAPI {
             // Add error handling for failed tile requests
             this._map.on('error', (e) => {
                 if (e.sourceId === sourceId) {
-                    console.warn(`[MapboxAPI] WMS layer '${groupId}' tile load error:`, e.error);
-                    console.warn(`[MapboxAPI] Original URL: ${config.url}`);
-                    console.warn(`[MapboxAPI] Converted URL: ${tileUrl}`);
                 }
             });
         } else {
@@ -1127,6 +1143,10 @@ export class MapboxAPI {
         // Determine the SRS/CRS to use
         const targetSrs = srs || params.srs || params.crs || 'EPSG:3857';
 
+        // Determine WMS version
+        const version = params.version || '1.1.1';
+        const useCRS = version >= '1.3.0';
+
         // Choose the appropriate bbox placeholder based on SRS
         const bboxPlaceholder = targetSrs === 'EPSG:4326' ? '{bbox-epsg-4326}' : '{bbox-epsg-3857}';
 
@@ -1137,9 +1157,9 @@ export class MapboxAPI {
             'bbox': bboxPlaceholder,
             'format': params.format || 'image/png',
             'service': params.service || 'WMS',
-            'version': params.version || '1.1.1',
+            'version': version,
             'request': params.request || 'GetMap',
-            'srs': targetSrs,
+            [useCRS ? 'crs' : 'srs']: targetSrs,
             'transparent': params.transparent || 'true',
             'width': tileSize.toString(),
             'height': tileSize.toString(),
@@ -1164,8 +1184,6 @@ export class MapboxAPI {
                 tileUrl += `&referer=${encodedReferer}`;
             }
         }
-
-        console.debug(`[MapboxAPI] Converted WMS URL (${targetSrs}): ${wmsUrl} -> ${tileUrl}`);
 
         return tileUrl;
     }
@@ -1216,8 +1234,6 @@ export class MapboxAPI {
             }, 'raster');
 
             this._addLayerWithSlot(layerConfig, LayerOrderManager.getInsertPosition(this._map, 'wms', null, config, this._orderedGroups));
-
-            console.log(`[MapboxAPI] Updated WMS layer ${groupId} with new time URL: ${tileUrl}`);
         }
     }
 
@@ -1307,7 +1323,7 @@ export class MapboxAPI {
             }
 
             this._map.addSource(sourceId, sourceConfig);
-            this._addGeoJSONLayers(groupId, config, sourceId, visible);
+            await this._addGeoJSONLayers(groupId, config, sourceId, visible);
         } else {
             this._updateGeoJSONLayerVisibility(groupId, config, visible);
         }
@@ -1360,7 +1376,7 @@ export class MapboxAPI {
         });
 
         // Create a source and layers for each group
-        Object.entries(groups).forEach(([safeValue, groupData]) => {
+        for (const [safeValue, groupData] of Object.entries(groups)) {
             const subSourceId = `geojson-${groupId}-${safeValue}`;
 
             if (!this._map.getSource(subSourceId) && visible) {
@@ -1397,9 +1413,9 @@ export class MapboxAPI {
                 }
                 // Don't auto-generate colors, let _addGeoJSONLayers use default step unless overridden
 
-                this._addGeoJSONLayers(groupId, subConfig, subSourceId, visible, safeValue);
+                await this._addGeoJSONLayers(groupId, subConfig, subSourceId, visible, safeValue);
             }
-        });
+        }
 
         return true;
     }
@@ -1418,7 +1434,7 @@ export class MapboxAPI {
         throw new Error('Invalid GeoJSON data format');
     }
 
-    _addGeoJSONLayers(groupId, config, sourceId, visible, suffix = '') {
+    async _addGeoJSONLayers(groupId, config, sourceId, visible, suffix = '') {
         if (visible && config.blink) {
             this._setupBlinking(groupId, config);
         }
@@ -1513,13 +1529,10 @@ export class MapboxAPI {
         // Add text or icon layer if symbol properties are defined
         if (hasTextStyles || userHasIconStyles) {
             // Filter style to only include symbol/text-related properties
-            const symbolStyle = this._filterStyleForLayerType(config.style, 'symbol');
+            let symbolStyle = this._filterStyleForLayerType(config.style, 'symbol');
 
-            // If it's an icon layer, we need to make sure the image is loaded
-            if (userHasIconStyles) {
-                const iconImage = config.style['icon-image'];
-                this._ensureIconLoaded(iconImage);
-            }
+            // Prepare custom icon images if present (handles both simple strings and expressions)
+            symbolStyle = await this._prepareSymbolLayerIcons(symbolStyle);
 
             const symbolLayerConfig = this._createLayerConfig({
                 id: `${sourceId}-symbol${idSuffix}`,
@@ -1792,7 +1805,7 @@ export class MapboxAPI {
                 this._map.addSource(sourceId, sourceConfig);
 
                 // Use the same layer creation logic as GeoJSON to support all layer types
-                this._addGeoJSONLayers(groupId, config, sourceId, visible);
+                await this._addGeoJSONLayers(groupId, config, sourceId, visible);
 
                 // Set up refresh if specified
                 if (config.refresh && config.url) {
@@ -2012,8 +2025,8 @@ export class MapboxAPI {
 
                     // Get base opacity from config or default to 1
                     const styleType = type === 'symbol' ? 'symbol' : type;
-                    const baseOpacity = (config.style && config.style[opacityProp]) !== undefined 
-                        ? config.style[opacityProp] 
+                    const baseOpacity = (config.style && config.style[opacityProp]) !== undefined
+                        ? config.style[opacityProp]
                         : 1;
 
                     const expression = [
@@ -2025,13 +2038,13 @@ export class MapboxAPI {
 
                     try {
                         this._map.setPaintProperty(layerId, opacityProp, expression);
-                        
+
                         // If symbol layer, also handle text-opacity
                         if (type === 'symbol') {
-                            const textBaseOpacity = (config.style && config.style['text-opacity']) !== undefined 
-                                ? config.style['text-opacity'] 
+                            const textBaseOpacity = (config.style && config.style['text-opacity']) !== undefined
+                                ? config.style['text-opacity']
                                 : 1;
-                            
+
                             const textExpression = [
                                 'case',
                                 blinkConfig.condition,
@@ -2079,18 +2092,18 @@ export class MapboxAPI {
 
                         try {
                             // Reset to config style or default (1)
-                            const baseOpacity = (config.style && config.style[opacityProp]) !== undefined 
-                                ? config.style[opacityProp] 
+                            const baseOpacity = (config.style && config.style[opacityProp]) !== undefined
+                                ? config.style[opacityProp]
                                 : 1;
                             this._map.setPaintProperty(layerId, opacityProp, baseOpacity);
-                            
+
                             if (type === 'symbol') {
-                                const textBaseOpacity = (config.style && config.style['text-opacity']) !== undefined 
-                                     ? config.style['text-opacity'] 
-                                     : 1;
+                                const textBaseOpacity = (config.style && config.style['text-opacity']) !== undefined
+                                    ? config.style['text-opacity']
+                                    : 1;
                                 this._map.setPaintProperty(layerId, 'text-opacity', textBaseOpacity);
                             }
-                        } catch (e) {}
+                        } catch (e) { }
                     }
                 });
             }
@@ -2145,6 +2158,73 @@ export class MapboxAPI {
 
         traverse(expression);
         return icons;
+    }
+
+    async _loadAndRegisterIconImage(iconUrl) {
+        if (!iconUrl || typeof iconUrl !== 'string') return iconUrl;
+
+        if (!iconUrl.includes('/') && !iconUrl.includes('.')) {
+            return iconUrl;
+        }
+
+        const imageName = iconUrl.split('/').pop().replace(/\.[^/.]+$/, '');
+
+        if (this._map.hasImage(imageName)) {
+            return imageName;
+        }
+
+        try {
+            const img = await this._loadImage(iconUrl);
+            this._map.addImage(imageName, img);
+            return imageName;
+        } catch (error) {
+            return iconUrl;
+        }
+    }
+
+    async _prepareSymbolLayerIcons(style) {
+        if (!style || typeof style !== 'object') return style;
+
+        const modifiedStyle = { ...style };
+
+        if (modifiedStyle['icon-image']) {
+            const iconImage = modifiedStyle['icon-image'];
+
+            // Handle both simple strings and Mapbox expressions
+            if (typeof iconImage === 'string') {
+                modifiedStyle['icon-image'] = await this._loadAndRegisterIconImage(iconImage);
+            } else if (Array.isArray(iconImage)) {
+                // Handle expressions - load all icon paths within the expression
+                await this._loadIconsFromExpression(iconImage);
+                // Keep the expression as-is, just ensure all referenced icons are loaded
+            }
+        }
+
+        return modifiedStyle;
+    }
+
+    async _loadIconsFromExpression(expression) {
+        const traverse = async (expr) => {
+            if (typeof expr === 'string') {
+                // Load if it looks like an icon path (has file extension or common path prefix)
+                const looksLikeIcon = expr.includes('.png') || expr.includes('.jpg') ||
+                                     expr.includes('.svg') || expr.includes('.jpeg') ||
+                                     expr.includes('.gif') || expr.startsWith('http://') ||
+                                     expr.startsWith('https://') || expr.startsWith('assets/') ||
+                                     expr.startsWith('data/') || expr.startsWith('images/');
+
+                if (looksLikeIcon) {
+                    await this._loadAndRegisterIconImage(expr);
+                }
+            } else if (Array.isArray(expr)) {
+                // Traverse nested arrays
+                for (let i = 1; i < expr.length; i++) {
+                    await traverse(expr[i]);
+                }
+            }
+        };
+
+        await traverse(expression);
     }
 
     _setupImageRefresh(groupId, config) {
@@ -2846,11 +2926,9 @@ export class MapboxAPI {
         } catch (error) {
             // Handle DEM data range errors gracefully
             if (error.message && error.message.includes('out of range source coordinates for DEM data')) {
-                console.debug('[MapboxAPI] DEM data out of range, returning empty features array');
                 return [];
             } else {
                 // Re-throw other errors as they might be more serious
-                console.error('[MapboxAPI] Error querying rendered features:', error);
                 throw error;
             }
         }
