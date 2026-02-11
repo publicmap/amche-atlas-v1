@@ -42,6 +42,8 @@ $(window).on('load', function () {
 
     loadGoogleAnalytics();
 
+    initializeKeyboardController();
+
     MapInitializer.initializeMap().then(() => {
         MapInitializer.initializeSearch();
         initializeKeyboardController();
