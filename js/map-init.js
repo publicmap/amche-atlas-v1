@@ -1,6 +1,5 @@
 import { URLManager } from './url-manager.js';
 import { TimeControl } from './time-control.js';
-import { ButtonShareLink } from './button-share-link.js';
 import { MapLayerControl } from './map-layer-controls.js';
 import { LayerOrderManager } from './layer-order-manager.js';
 import { StatePersistence } from './state-persistence.js';
@@ -103,11 +102,14 @@ export class MapInitializer {
         }
 
         // Parse layers from URL parameter if provided
+        console.log('🔍 Checking layersParam:', layersParam);
         if (layersParam) {
             const urlLayers = URLUtils.parseLayersFromUrl(layersParam);
+            console.log('🔍 Parsed URL layers:', urlLayers.map(l => l.id));
 
             // Set URL layers to be visible by default and maintain order
             if (urlLayers.length > 0) {
+                console.log('🔍 Processing', urlLayers.length, 'URL layers');
                 // Set initiallyChecked to true for all URL layers
                 const processedUrlLayers = urlLayers.map(layer => ({
                     ...layer,
@@ -171,15 +173,16 @@ export class MapInitializer {
                     window.history.replaceState({}, '', newUrl);
                 }
 
-                // Convert URL order to map rendering order using centralized logic
-                // This handles: URL reversal + basemap grouping
-                const mapOrderLayers = LayerOrderManager.urlOrderToMapOrder(processedUrlLayers);
+                // Keep layers in URL/visual order (first = top)
+                // The conversion to map rendering order will happen when layers are added to the map
+                console.log('🔍 Processing URL layers (keeping in visual order):');
+                console.log('  URL order:', processedUrlLayers.map(l => l.id));
 
                 // Build final layers array by merging with existing config
                 const finalLayers = [];
 
-                // Add URL layers in map order (basemaps first, overlays after)
-                mapOrderLayers.forEach(urlLayer => {
+                // Add URL layers in URL/visual order (first = top)
+                processedUrlLayers.forEach(urlLayer => {
                     // Find matching layer in existing config to merge properties
                     const existingLayer = existingLayers.find(layer => layer.id === urlLayer.id);
 
@@ -385,6 +388,7 @@ export class MapInitializer {
     static async initializeMap() {
         const config = await this.loadConfiguration();
         const layers = config.layers || [];
+        console.log('🔍 Final layers for MapLayerControl:', layers.filter(l => l.initiallyChecked).map(l => l.id));
 
         // Apply defaults from config.defaults.map first
         if (config.defaults && config.defaults.map) {
@@ -410,6 +414,27 @@ export class MapInitializer {
             MapUtils.initializeSlotLayers(map);
 
             // Add debugging method to global scope
+            window.verifyLayerOrder = () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const layersParam = urlParams.get('layers');
+                if (!layersParam) {
+                    console.error('No layers parameter in URL');
+                    return;
+                }
+                const urlLayers = layersParam.split(',').map(id => ({ id: id.trim() }));
+                const result = LayerOrderManager.verifyLayerOrder(map, urlLayers);
+                console.group('🔍 Layer Order Verification');
+                console.log(result.message);
+                console.log('URL order (first = on top):', result.urlOrder);
+                console.log('Visual order (first = on bottom):', result.visualOrder);
+                console.log('Expected visual order:', result.expectedOrder);
+                console.log('Slots:', result.slots);
+                if (!result.valid) {
+                    console.error('❌ Mismatch detected!');
+                }
+                console.groupEnd();
+                return result;
+            };
 
             const canvas = map.getCanvas();
 
@@ -485,11 +510,6 @@ export class MapInitializer {
             map.addControl(new ButtonExternalMapLinks(), 'bottom-right');
             map.addControl(new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }));
             map.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
-            map.addControl(new ButtonShareLink({
-                url: () => window.location.href,
-                showToast: true,
-                qrCodeSize: 500
-            }), 'bottom-right');
 
             // Show feature control panel by default on initial load
             // Show feature control panel by default on initial load
@@ -529,6 +549,39 @@ export class MapInitializer {
 
             // Make URL manager globally accessible for ShareLink
             window.urlManager = urlManager;
+
+            // Update attribution with location name on map movement
+            let reverseGeocodeTimeout;
+            const updateAttributionLocation = async () => {
+                try {
+                    const center = map.getCenter();
+                    const zoom = map.getZoom();
+                    const latRounded = Math.round(center.lat * 100000) / 100000;
+                    const lngRounded = Math.round(center.lng * 100000) / 100000;
+                    const nominatimZoom = Math.max(0, Math.min(18, Math.round(zoom)));
+                    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latRounded}&lon=${lngRounded}&zoom=${nominatimZoom}&addressdetails=1`;
+
+                    const response = await fetch(url, {
+                        headers: { 'User-Agent': 'AMChe-Goa-Map/1.0' }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.display_name && window.attributionControl) {
+                            window.attributionControl.setLocation(data.display_name);
+                        }
+                    }
+                } catch (e) {
+                    console.debug('Reverse geocoding failed', e);
+                }
+            };
+
+            map.on('moveend', () => {
+                clearTimeout(reverseGeocodeTimeout);
+                reverseGeocodeTimeout = setTimeout(updateAttributionLocation, 1000);
+            });
+
+            updateAttributionLocation();
 
             // Only set camera position if there's no hash in URL
             if (!window.location.hash) {

@@ -339,7 +339,7 @@
                     </svg>
                     Source Code
                 </a>
-                <a href="./privacy.html" style="
+                <a href="./privacy.html" target="_blank" style="
                     display: inline-flex;
                     align-items: center;
                     gap: 4px;
@@ -523,7 +523,7 @@
                             <sl-icon name="github" style="font-size: 0.75rem;"></sl-icon>
                             Source Code
                         </a>
-                        <a href="./privacy.html"
+                        <a href="./privacy.html" target="_blank"
                             style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); color: white; text-decoration: none; border-radius: 4px; font-size: 0.75rem; font-weight: 500; transition: background 0.2s; border: 1px solid rgba(255, 255, 255, 0.2);"
                             onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'"
                             onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'">
@@ -868,11 +868,21 @@
                 }
             });
 
-            // Preserve hash when navigating
+            // Preserve hash when navigating to root
+            document.querySelectorAll('a[href="./"]').forEach(item => {
+                item.addEventListener('click', function (e) {
+                    if (window.location.hash) {
+                        e.preventDefault();
+                        window.location.href = './' + window.location.hash;
+                    }
+                });
+            });
+
+            // Preserve hash when navigating to other pages
             document.querySelectorAll('.nav-menu-item[href^="./"]').forEach(item => {
                 item.addEventListener('click', function (e) {
                     const href = this.getAttribute('href');
-                    if (href && window.location.hash) {
+                    if (href && href !== './' && window.location.hash) {
                         e.preventDefault();
                         window.location.href = href + window.location.hash;
                     }

@@ -286,6 +286,25 @@
       "id": "2021-regional-plan",
       "url": "https://mapwarper.net/mosaics/tile/2054/{z}/{x}/{y}.png",
       "attribution": "<a href='https://tcp.goa.gov.in/'>Regional Development Plan for Goa 2021, TCP Goa</a>. Georeferenced using <a href='https://mapwarper.net/layers/2054#Show_tab'>Mapwarper</a>",
+      "style": {
+        "raster-opacity": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          6,
+          0.95,
+          12,
+          0.8,
+          16,
+          0.3,
+          20,
+          0.05
+        ]
+      },
       "initiallyChecked": true
     },
     {
@@ -674,7 +693,19 @@
       "minzoom": 13,
       "attribution": "<a href='https://bhunaksha.goa.gov.in/bhunaksha/'>Goa Bhunaksha</a>, <a href='https://onemapgoagis.goa.gov.in/map/'>OneMapGoa GIS</a> - Collected by <a href='https://datameet.org'>Datameet Community</a>",
       "style": {
-        "text-padding": 10,
+        "text-padding": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          15,
+          10,
+          17,
+          2
+        ],
         "text-font": [
           "Courier New",
           "Open Sans SemiBold"

@@ -42,6 +42,7 @@ export class MapFeatureControl {
         this._map = map;
         this._createContainer();
         this._setupMessageListener();
+        this._setupMapEventListeners();
         return this._container;
     }
 
@@ -314,10 +315,42 @@ export class MapFeatureControl {
     }
 
     /**
+     * Setup map event listeners to send updates to iframe
+     */
+    _setupMapEventListeners() {
+        if (!this._map) return;
+
+        // Send bounds updates when map moves
+        const sendBoundsUpdate = () => {
+            if (!this._iframe || !this._iframe.contentWindow) return;
+
+            const mapBounds = this._map.getBounds();
+            const bounds = [
+                mapBounds.getWest(),
+                mapBounds.getSouth(),
+                mapBounds.getEast(),
+                mapBounds.getNorth()
+            ];
+
+            this._iframe.contentWindow.postMessage({
+                type: 'bounds-update',
+                bounds: bounds
+            }, '*');
+        };
+
+        // Listen for map move end events
+        this._map.on('moveend', sendBoundsUpdate);
+        this._map.on('zoomend', sendBoundsUpdate);
+
+        // Store the listener for cleanup
+        this._boundsUpdateListener = sendBoundsUpdate;
+    }
+
+    /**
      * Setup message listener for iframe communication
      */
     _setupMessageListener() {
-        window.addEventListener('message', (event) => {
+        window.addEventListener('message', async (event) => {
             if (event.data.type === 'inspector-ready') {
                 this._isIframeReady = true;
                 this._inspectorInitialized = true;
@@ -338,7 +371,7 @@ export class MapFeatureControl {
             } else if (event.data.type === 'zoom-to-layer') {
                 this._zoomToLayer(event.data.layerId);
             } else if (event.data.type === 'remove-layer') {
-                this._removeLayer(event.data.layerId);
+                await this._removeLayer(event.data.layerId);
             } else if (event.data.type === 'inspector-height-change') {
                 this._adjustPanelHeight(event.data);
             } else if (event.data.type === 'close-panel') {
@@ -365,8 +398,34 @@ export class MapFeatureControl {
                 this._zoomToSelection();
             } else if (event.data.type === 'zoom-to-feature') {
                 this._zoomToFeature(event.data.layerId, event.data.featureId, event.data.feature);
+            } else if (event.data.type === 'request-map-layer-stack') {
+                this._sendMapLayerStack();
             }
         });
+    }
+
+    /**
+     * Send actual map layer stack to inspector for debugging
+     */
+    _sendMapLayerStack() {
+        if (!this._iframe || !this._iframe.contentWindow || !this._map) return;
+
+        const style = this._map.getStyle();
+        if (!style || !style.layers) return;
+
+        // Get all layers from the map style
+        const layerStack = style.layers.map(layer => ({
+            id: layer.id,
+            type: layer.type,
+            source: layer.source,
+            'source-layer': layer['source-layer'],
+            metadata: layer.metadata
+        }));
+
+        this._iframe.contentWindow.postMessage({
+            type: 'map-layer-stack',
+            layerStack: layerStack
+        }, '*');
     }
 
     /**
@@ -567,10 +626,54 @@ export class MapFeatureControl {
             layerConfigs.push(config);
         }
 
+        // Sort layerConfigs by URL order to ensure inspector displays them correctly
+        const urlParams = new URLSearchParams(window.location.search);
+        const layersParam = urlParams.get('layers');
+        if (layersParam) {
+            // Parse URL layers to get order
+            const urlLayerIds = layersParam.split(',').map(id => id.trim());
+            const urlOrderMap = new Map();
+            urlLayerIds.forEach((id, index) => {
+                urlOrderMap.set(id, index);
+            });
+
+            // Sort layerConfigs by URL order
+            layerConfigs.sort((a, b) => {
+                const aOrder = urlOrderMap.get(a.id);
+                const bOrder = urlOrderMap.get(b.id);
+
+                // If both have URL order, sort by it
+                if (aOrder !== undefined && bOrder !== undefined) {
+                    return aOrder - bOrder;
+                }
+                // Layers not in URL go to the end
+                if (aOrder !== undefined) return -1;
+                if (bOrder !== undefined) return 1;
+                return 0;
+            });
+        }
+
+        // Get current map bounds
+        let bounds = null;
+        if (this._map) {
+            const mapBounds = this._map.getBounds();
+            bounds = [
+                mapBounds.getWest(),
+                mapBounds.getSouth(),
+                mapBounds.getEast(),
+                mapBounds.getNorth()
+            ];
+        }
+
+        // Get URL search params from parent window
+        const urlSearchParams = window.location.search;
+
         this._iframe.contentWindow.postMessage({
             type: 'inspector-data',
             activeLayers: layerConfigs,
-            layerRegistry: window.layerRegistry
+            layerRegistry: window.layerRegistry,
+            bounds: bounds,
+            urlSearchParams: urlSearchParams
         }, '*');
     }
 
@@ -1068,6 +1171,24 @@ export class MapFeatureControl {
                 return;
             }
 
+            // Check if current map center is within the bbox
+            let preservedCenter = null;
+            if (config.minzoom !== undefined) {
+                const currentCenter = this._map.getCenter();
+                const [minLng, minLat] = parsedBbox[0];
+                const [maxLng, maxLat] = parsedBbox[1];
+
+                const isWithinBounds =
+                    currentCenter.lng >= minLng &&
+                    currentCenter.lng <= maxLng &&
+                    currentCenter.lat >= minLat &&
+                    currentCenter.lat <= maxLat;
+
+                if (isWithinBounds) {
+                    preservedCenter = currentCenter;
+                }
+            }
+
             // First fit bounds to show the full extent
             this._map.fitBounds(parsedBbox, { padding: 50, duration: 1000 });
 
@@ -1078,7 +1199,13 @@ export class MapFeatureControl {
                     const currentZoom = this._map.getZoom();
                     // Only zoom in if current zoom is less than target
                     if (currentZoom < targetZoom) {
-                        this._map.zoomTo(targetZoom, { duration: 500 });
+                        // Use preserved center if available, otherwise use current center from fitBounds
+                        const centerToUse = preservedCenter || this._map.getCenter();
+                        this._map.easeTo({
+                            center: centerToUse,
+                            zoom: targetZoom,
+                            duration: 500
+                        });
                     }
                 }, 1100); // Wait for fitBounds animation to complete (1000ms + buffer)
             }
@@ -1088,7 +1215,7 @@ export class MapFeatureControl {
     /**
      * Remove a layer
      */
-    _removeLayer(layerId) {
+    async _removeLayer(layerId) {
         const mapLayerControl = window.layerControl;
         if (!mapLayerControl) {
             console.warn('[MapFeatureControl] Layer control not available');
@@ -1127,8 +1254,12 @@ export class MapFeatureControl {
         const checkbox = groupElement.querySelector('.toggle-switch input[type="checkbox"]');
         if (checkbox && checkbox.checked) {
             checkbox.checked = false;
-            groupElement.hide();
-            mapLayerControl._toggleLayerGroup(groupIndex, false);
+            $(groupElement).hide();
+            await mapLayerControl._toggleLayerGroup(groupIndex, false);
+
+            if (window.urlManager) {
+                window.urlManager.updateURL();
+            }
         }
 
         this._sendDataToIframe();
@@ -1227,6 +1358,12 @@ export class MapFeatureControl {
             this._dragHandle.removeEventListener('mousedown', this._panelDragListeners.dragStart);
             document.removeEventListener('mouseup', this._panelDragListeners.dragEnd);
             document.removeEventListener('mousemove', this._panelDragListeners.drag);
+        }
+
+        // Clean up map event listeners
+        if (this._map && this._boundsUpdateListener) {
+            this._map.off('moveend', this._boundsUpdateListener);
+            this._map.off('zoomend', this._boundsUpdateListener);
         }
     }
 

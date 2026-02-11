@@ -1,6 +1,7 @@
 {
   "name": "Mapbox",
   "areaOfInterest": "Global",
+  "description": "Global vector basemaps from Mapbox.com",
   "version": "0.1.0",
   "url": "https://github.com/publicmap/amche-goa/blob/main/config/goa.atlas.json",
   "color": "#2563eb",
@@ -20,6 +21,9 @@
   "layers": [
     {
       "id": "traffic",
+      "tags": [
+        "traffic"
+      ],
       "title": "Traffic",
       "description": "Live traffic map via <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-traffic-v1/' target='_blank'>Mapbox Traffic</a> vector tiles. Updated every 10 minutes.",
       "type": "style",
@@ -34,7 +38,6 @@
     {
       "id": "streets",
       "tags": [
-        "basemap",
         "streets"
       ],
       "title": "Mapbox Street Map",
@@ -111,6 +114,22 @@
     },
     {
       "initiallyChecked": true,
+      "id": "terrain-v2",
+      "tags": [
+        "terrain"
+      ],
+      "type": "vector",
+      "title": "Mapbox Terrain And Contours",
+      "description": "Mapbox Terrain And Contours. See <a href='https://docs.mapbox.com/help/dive-deeper/imagery/'>Mapbox Terrain And Contours</a> for details.",
+      "headerImage": "assets/map-layers/mapbox/map-layer-satellite.png",
+      "attribution": "<a href='https://www.mapbox.com/about/maps' rel='noopener nofollow'>© Mapbox</a> <a href='https://www.maxar.com/' rel='noopener nofollow'>© Maxar</a>",
+      "url": "mapbox://mapbox.mapbox-terrain-v2",
+      "style": {
+        "line-width": 2
+      }
+    },
+    {
+      "initiallyChecked": true,
       "id": "satellite",
       "tags": [
         "basemap",
@@ -122,7 +141,10 @@
       "headerImage": "assets/map-layers/mapbox/map-layer-satellite.png",
       "attribution": "<a href='https://www.mapbox.com/about/maps' rel='noopener nofollow'>© Mapbox</a> <a href='https://www.maxar.com/' rel='noopener nofollow'>© Maxar</a>",
       "url": "mapbox://mapbox.satellite",
-      "maxzoom": 22
+      "maxzoom": 22,
+      "style": {
+        "raster-opacity": 1
+      }
     }
   ]
 }
