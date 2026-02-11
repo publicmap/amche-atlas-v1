@@ -146,6 +146,10 @@
       "id": "osm-mapnik"
     },
     {
+      "id": "mapbox-countries",
+      "initiallyChecked": true
+    },
+    {
       "id": "mapbox-satellite",
       "initiallyChecked": true
     }

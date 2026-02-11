@@ -988,14 +988,20 @@ export class MapFeatureControl {
             // Style layers control existing base style layers and don't create new layers
             if (layerConfig.type === 'style') {
                 // Check if layer is in the visible state from layer control
-                if (window.layerControl && window.layerControl._state) {
-                    const stateGroup = window.layerControl._state.groups.find(g => g.id === layerConfig.id);
-                    // If initiallyChecked or if we have state tracking, consider it visible
-                    // Style layers don't create map layers, so we rely on the layer control state
-                    return stateGroup && (stateGroup.initiallyChecked || this._hasVisibleStyleLayers(layerConfig));
+                if (window.layerControl && window.layerControl._sourceControls) {
+                    // Find the control element for this layer
+                    const groupIndex = window.layerControl._state.groups.findIndex(g => g.id === layerConfig.id);
+                    if (groupIndex !== -1) {
+                        const controlElement = window.layerControl._sourceControls[groupIndex];
+                        if (controlElement) {
+                            const checkbox = controlElement.querySelector('.toggle-switch input[type="checkbox"]');
+                            // Check actual checkbox state, not initiallyChecked
+                            return checkbox && checkbox.checked;
+                        }
+                    }
                 }
-                // Fallback: check if it has initiallyChecked
-                return layerConfig.initiallyChecked === true;
+                // Fallback: check if it has visible style layers
+                return this._hasVisibleStyleLayers(layerConfig);
             }
 
             // For raster-style-layer, check if matching layers exist and are visible
@@ -1287,9 +1293,13 @@ export class MapFeatureControl {
             if (window.urlManager) {
                 window.urlManager.updateURL({ updateSelections: true, updateLayers: true });
             }
-        }
 
-        this._sendDataToIframe();
+            setTimeout(() => {
+                this._sendDataToIframe();
+            }, 100);
+        } else {
+            this._sendDataToIframe();
+        }
     }
 
     /**
