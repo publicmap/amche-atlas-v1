@@ -543,6 +543,50 @@ export class MapFeatureStateManager extends EventTarget {
     }
 
     /**
+     * Clear all selections for a specific layer
+     * @param {string} layerId - The layer ID to clear selections for
+     * @param {boolean} suppressEvent - Whether to suppress the event emission
+     */
+    clearLayerSelections(layerId, suppressEvent = false) {
+        const clearedFeatures = [];
+
+        // Find and deselect all features for this layer
+        this._selectedFeatures.forEach(compositeKey => {
+            const featureState = this._featureStates.get(compositeKey);
+            if (featureState && featureState.layerId === layerId && featureState.isSelected) {
+                featureState.isSelected = false;
+
+                // Remove mapbox feature state
+                const featureId = this._getFeatureId(featureState.feature);
+                this._removeMapboxFeatureState(featureId, layerId, 'selected');
+
+                clearedFeatures.push({
+                    featureId,
+                    layerId,
+                    feature: featureState.feature
+                });
+
+                // Remove from selected features set
+                this._selectedFeatures.delete(compositeKey);
+            }
+        });
+
+        // Update line layer sort keys for z-ordering
+        if (clearedFeatures.length > 0) {
+            this._updateLineSortKeys();
+        }
+
+        if (!suppressEvent && clearedFeatures.length > 0) {
+            this._emitStateChange('selection-cleared', {
+                layerId,
+                clearedFeatures
+            });
+        }
+
+        return clearedFeatures;
+    }
+
+    /**
      * Get all features for a layer
      */
     getLayerFeatures(layerId) {

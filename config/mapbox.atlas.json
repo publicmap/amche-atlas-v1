@@ -38,7 +38,8 @@
     {
       "id": "countries",
       "tags": [
-        "boundaries"
+        "boundaries",
+        "basemap"
       ],
       "title": "Mapbox Country Boundaries",
       "description": "Admin-0 level boundaries from Mapbox. See <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-countries-v1/' target='_blank'>Mapbox Countries v1 Docs</a> for details.",
@@ -66,7 +67,8 @@
         "id": "iso_3166_1",
         "title": "Name",
         "label": "name_en"
-      }
+      },
+      "initiallyChecked": true
     },
     {
       "id": "streets",
@@ -152,13 +154,30 @@
         "terrain"
       ],
       "type": "vector",
-      "title": "Mapbox Terrain And Contours",
-      "description": "Mapbox Terrain And Contours. See <a href='https://docs.mapbox.com/help/dive-deeper/imagery/'>Mapbox Terrain And Contours</a> for details.",
-      "headerImage": "assets/map-layers/mapbox/map-layer-satellite.png",
+      "title": "Mapbox Terrain Contours",
+      "sourceLayer": "contour",
+      "description": "Mapbox Terrain Contours. See <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-terrain-v2/'>Mapbox Terrain And Contours</a> for details.",
       "attribution": "<a href='https://www.mapbox.com/about/maps' rel='noopener nofollow'>© Mapbox</a> <a href='https://www.maxar.com/' rel='noopener nofollow'>© Maxar</a>",
       "url": "mapbox://mapbox.mapbox-terrain-v2",
       "style": {
-        "line-width": 2
+        "symbol-placement": "line",
+        "text-field": [
+          "concat",
+          [
+            "get",
+            "ele"
+          ],
+          "m"
+        ],
+        "line-color": "red",
+        "text-halo-color": "red",
+        "text-halo-width": 1,
+        "text-size": 8
+      },
+      "inspect": {
+        "id": "ele",
+        "title": "Elevation",
+        "label": "ele"
       }
     },
     {

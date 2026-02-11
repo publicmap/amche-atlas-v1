@@ -31,6 +31,7 @@ export class URLManager {
                 if (eventType === 'feature-click' ||
                     eventType === 'feature-click-multiple' ||
                     eventType === 'selections-cleared' ||
+                    eventType === 'selection-cleared' ||
                     eventType === 'feature-deselected') {
                     if (!this.isUpdatingFromURL && !data?.fromURL) {
                         this.updateURL({ updateSelections: true, updateLayers: false });

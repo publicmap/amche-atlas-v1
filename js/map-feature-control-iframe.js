@@ -751,6 +751,9 @@ export class MapFeatureControl {
             case 'feature-deselected':
                 this._sendFeatureDeselectedToIframe(data.layerId, data.featureId);
                 break;
+            case 'selection-cleared':
+                this._sendLayerSelectionsClearedToIframe(data.layerId);
+                break;
             case 'layer-registered':
             case 'layer-unregistered':
                 this._sendDataToIframe();
@@ -873,6 +876,22 @@ export class MapFeatureControl {
             type: 'feature-deselected',
             layerId: layerId,
             featureId: featureId
+        };
+
+        this._iframe.contentWindow.postMessage(message, '*');
+
+        // Also send to browser iframe if it exists
+        if (window.browserControl && window.browserControl._iframe && window.browserControl._iframe.contentWindow) {
+            window.browserControl._iframe.contentWindow.postMessage(message, '*');
+        }
+    }
+
+    _sendLayerSelectionsClearedToIframe(layerId) {
+        if (!this._iframe || !this._iframe.contentWindow) return;
+
+        const message = {
+            type: 'selection-cleared',
+            layerId: layerId
         };
 
         this._iframe.contentWindow.postMessage(message, '*');
@@ -1245,6 +1264,14 @@ export class MapFeatureControl {
             return;
         }
 
+        // Clear selections for this layer from state manager
+        if (this._stateManager) {
+            this._stateManager.clearLayerSelections(actualLayerId);
+        }
+
+        // Clear layer isolation to ensure remaining layers are visible
+        this._clearLayerIsolation();
+
         const groupElement = mapLayerControl._sourceControls[groupIndex];
         if (!groupElement) {
             console.warn(`[MapFeatureControl] UI element for layer ${actualLayerId} not found`);
@@ -1258,7 +1285,7 @@ export class MapFeatureControl {
             await mapLayerControl._toggleLayerGroup(groupIndex, false);
 
             if (window.urlManager) {
-                window.urlManager.updateURL();
+                window.urlManager.updateURL({ updateSelections: true, updateLayers: true });
             }
         }
 
