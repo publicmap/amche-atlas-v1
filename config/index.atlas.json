@@ -122,6 +122,10 @@
       "id": "goa-amrut-panjim-landuse"
     },
     {
+      "id": "india-state",
+      "initiallyChecked": true
+    },
+    {
       "id": "india-2023-open-buildings",
       "initiallyChecked": true
     },

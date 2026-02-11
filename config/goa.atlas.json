@@ -274,9 +274,8 @@
     },
     {
       "tags": [
-        "regulatory",
-        "masterplan",
-        "basemap"
+        "2",
+        "Planning"
       ],
       "title": "Regional Development Plan for Goa 2021",
       "description": "Regional landuse plan for Goa 2021 (RDP-2021) prepared by the <a href='https://tcp.goa.gov.in/'>Goa Town & Country Planning Department</a> and <a href='https://tcp.goa.gov.in/regional-plan-for-goa-2021'>notified</a> as per the <a href='https://indiankanoon.org/doc/3192342/'>Goa TCP Act</a>",
@@ -382,11 +381,12 @@
     },
     {
       "tags": [
-        "boundaries"
+        "1",
+        "Boundaries"
       ],
       "initiallyChecked": true,
       "title": "Local Body Boundaries",
-      "description": "Municipal and Panchayat local body boundaries. Please see <a href='https://grammanchitra.gov.in/gm4MVC'>Gramanchiitra</a> for panchayat demographic profile and information on elected representatives.",
+      "description": "<p>Boundaries of <a href='https://panchayatsgoa.gov.in'>191 Village Panchayats (VP)</a>, <a href='https://goaulbservice.gov.in'>13 Municipal Councils</a> and <a href='https://ccpgoa.com'>Corporation of the City of Panaji</a>. For more information see <a href='https://sec.goa.gov.in/local-bodies-statistics/'>Goa State Election Commission/Statistics</a>. Please see <a href='https://grammanchitra.gov.in/gm4MVC'>Gramanchiitra</a> for panchayat demographic profile and information on elected representatives. For local body websites check <a href='https://panchayatsgoa.gov.in'>GoaOnline</a></p>",
       "headerImage": "assets/map-layers/goa/map-layer-local-boundaries.png",
       "type": "vector",
       "id": "local-body",
@@ -680,7 +680,8 @@
     {
       "tags": [
         "1",
-        "survey"
+        "Boundaries",
+        "Survey"
       ],
       "title": "Survey Plot Boundaries",
       "description": "Survey and plot subdivision boundaries from the <a href='Directorate of Settlement & Land Records'>Department of Land Records</a>. The map is provided for information purpose only. An official copy can be obtained from <a href='https://goaonline.gov.in/Appln/Uil/DeptServices?__DocId=REV&__ServiceId=REV31'>Goa Online</a> and <a href='https://dslr.goa.gov.in/f114new.aspx'>Directorate of Settlement & Land Records (Form 1 & 14)</a>",

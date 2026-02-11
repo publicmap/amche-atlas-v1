@@ -1664,10 +1664,28 @@
                     },
                     click: function (e) {
                         e.stopPropagation();
-                        window.parent.postMessage({
-                            type: 'remove-layer',
-                            layerId: layerConfig.id
-                        }, '*');
+
+                        // First collapse the card and clear isolation
+                        if (expandedLayerId === layerConfig.id) {
+                            expandedLayerId = null;
+                            manuallyExpandedLayers.delete(layerConfig.id);
+
+                            if (isolateEnabled) {
+                                window.parent.postMessage({
+                                    type: 'clear-layer-isolation'
+                                }, '*');
+                            }
+                            clearVisualIsolation();
+                            renderLayers();
+                        }
+
+                        // Then remove the layer after a brief delay for animation
+                        setTimeout(() => {
+                            window.parent.postMessage({
+                                type: 'remove-layer',
+                                layerId: layerConfig.id
+                            }, '*');
+                        }, 200);
                     }
                 });
                 $removeBtn.on('mouseenter', function () {

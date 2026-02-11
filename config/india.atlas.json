@@ -640,6 +640,40 @@
       }
     },
     {
+      "title": "State Boundaries",
+      "description": "LGD_States",
+      "type": "vector",
+      "id": "state",
+      "url": "https://indianopenmaps.fly.dev/not-so-open/states/lgd/{z}/{x}/{y}.pbf",
+      "sourceLayer": "LGD_States",
+      "minzoom": 0,
+      "maxzoom": 10,
+      "attribution": "Source: <a href='https://lgdirectory.gov.in' target='_blank' rel='noopener noreferrer'>Local Government Directory</a> - Collected by <a href='https://datameet.org' target='_blank' rel='noopener noreferrer'>Datameet Community</a>",
+      "style": {
+        "text-padding": 2,
+        "text-field": [
+          "get",
+          "STNAME"
+        ],
+        "text-color": "black",
+        "text-size": 15,
+        "line-color": "black",
+        "fill-color": "white"
+      },
+      "inspect": {
+        "id": "OBJECTID",
+        "title": "Name",
+        "label": "STNAME",
+        "fields": [
+          "State_LGD"
+        ],
+        "fieldTitles": [
+          "LGD Code"
+        ]
+      },
+      "initiallyChecked": true
+    },
+    {
       "title": "Assembly Constituencies",
       "description": "Members of Legislative Assembly (MLA) constituencies.",
       "type": "vector",

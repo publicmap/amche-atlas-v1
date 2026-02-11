@@ -36,6 +36,39 @@
       ]
     },
     {
+      "id": "countries",
+      "tags": [
+        "boundaries"
+      ],
+      "title": "Mapbox Country Boundaries",
+      "description": "Admin-0 level boundaries from Mapbox. See <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-countries-v1/' target='_blank'>Mapbox Countries v1 Docs</a> for details.",
+      "type": "vector",
+      "attribution": "<a href='https://www.mapbox.com/boundaries'>© Mapbox Boundaries</a>",
+      "url": "mapbox://mapbox.country-boundaries-v1",
+      "sourceLayer": "country_boundaries",
+      "filter": [
+        "match",
+        [
+          "get",
+          "worldview"
+        ],
+        [
+          "all",
+          "IN"
+        ],
+        true,
+        false
+      ],
+      "style": {
+        "fill-color": "black"
+      },
+      "inspect": {
+        "id": "iso_3166_1",
+        "title": "Name",
+        "label": "name_en"
+      }
+    },
+    {
       "id": "streets",
       "tags": [
         "streets"
