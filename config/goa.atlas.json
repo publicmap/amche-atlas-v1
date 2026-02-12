@@ -299,7 +299,7 @@
           12,
           0.8,
           16,
-          0.3,
+          0.6,
           20,
           0.05
         ]
@@ -822,11 +822,33 @@
               ],
               false
             ],
-            "rgba(0, 0, 0, 1)",
-            "rgba(0, 0, 0, 1)"
+            "rgba(0, 0, 0, 0.3)",
+            "rgba(0, 0, 0, 0.4)"
           ]
         ],
-        "line-color": "#333",
+        "line-opacity": [
+          "case",
+          [
+            "boolean",
+            [
+              "feature-state",
+              "selected"
+            ],
+            false
+          ],
+          1,
+          [
+            "boolean",
+            [
+              "feature-state",
+              "hover"
+            ],
+            false
+          ],
+          1,
+          0.4
+        ],
+        "line-color": "#eee",
         "line-width": [
           "interpolate",
           [
@@ -869,7 +891,7 @@
               ],
               false
             ],
-            3,
+            2,
             [
               "boolean",
               [
@@ -878,7 +900,7 @@
               ],
               false
             ],
-            2,
+            1.2,
             1
           ]
         ]

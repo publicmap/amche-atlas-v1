@@ -107,7 +107,7 @@
               ],
               false
             ],
-            "black",
+            "red",
             [
               "boolean",
               [
@@ -117,7 +117,7 @@
               false
             ],
             "yellow",
-            "grey"
+            "black"
           ],
           "line-width": [
             "interpolate",
@@ -195,7 +195,7 @@
               ],
               false
             ],
-            "white",
+            "black",
             [
               "boolean",
               [
@@ -217,7 +217,7 @@
               ],
               false
             ],
-            "black",
+            "red",
             [
               "boolean",
               [
