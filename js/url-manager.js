@@ -386,6 +386,8 @@ export class URLManager {
         let fogParam = null;
         let wireframeParam = null;
         let terrainSourceParam = null;
+        let fovParam = null;
+        let soundParam = null;
         let selectedParam = null;
 
         // Handle layers parameter
@@ -533,6 +535,38 @@ export class URLManager {
             }
         }
 
+        // Handle fov parameter
+        if (options.fov !== undefined) {
+            const currentFovParam = urlParams.get('fov');
+            // Only set if not default (0.643 is default)
+            if (options.fov !== null && Math.abs(options.fov - 0.643) > 0.001) {
+                fovParam = options.fov.toFixed(3);
+                if (currentFovParam !== fovParam) {
+                    hasChanges = true;
+                }
+            } else {
+                // Remove parameter when using default FOV
+                if (currentFovParam !== null) {
+                    hasChanges = true;
+                }
+            }
+        }
+
+        // Handle sound parameter
+        if (options.sound !== undefined) {
+            const currentSoundParam = urlParams.get('sound');
+            if (options.sound) {
+                soundParam = 'true';
+                if (currentSoundParam !== 'true') {
+                    hasChanges = true;
+                }
+            } else {
+                if (currentSoundParam !== null) {
+                    hasChanges = true;
+                }
+            }
+        }
+
         // Handle selected features parameter
         if (options.updateSelections && this.stateManager) {
             const newSelectedParam = this.serializeSelectionsForURL();
@@ -561,6 +595,8 @@ export class URLManager {
             otherParams.delete('fog');
             otherParams.delete('wireframe');
             otherParams.delete('terrainSource');
+            otherParams.delete('fov');
+            otherParams.delete('sound');
             otherParams.delete('selected');
 
             // Add other parameters first (these will be URL-encoded by URLSearchParams)
@@ -628,6 +664,18 @@ export class URLManager {
             const currentTerrainSource = terrainSourceParam || (options.terrainSource === undefined ? urlParams.get('terrainSource') : null);
             if (currentTerrainSource && currentTerrainSource !== 'mapbox') {
                 params.push('terrainSource=' + currentTerrainSource);
+            }
+
+            // Add fov parameter (either new or preserved from current URL)
+            const currentFov = fovParam || (options.fov === undefined ? urlParams.get('fov') : null);
+            if (currentFov && Math.abs(parseFloat(currentFov) - 0.643) > 0.001) {
+                params.push('fov=' + currentFov);
+            }
+
+            // Add sound parameter (either new or preserved from current URL)
+            const currentSound = soundParam || (options.sound === undefined ? urlParams.get('sound') : null);
+            if (currentSound === 'true') {
+                params.push('sound=true');
             }
 
             // Add selected features parameter
@@ -757,6 +805,7 @@ export class URLManager {
         const fogParam = urlParams.get('fog');
         const wireframeParam = urlParams.get('wireframe');
         const terrainSourceParam = urlParams.get('terrainSource');
+        const fovParam = urlParams.get('fov');
         const selectedParam = urlParams.get('selected');
 
         // Auto-add terrain parameter if not present
@@ -764,7 +813,7 @@ export class URLManager {
             this.autoAddTerrainParameter();
         }
 
-        if (!layersParam && !geolocateParam && !searchParam && !terrainParam && !animateParam && !fogParam && !wireframeParam && !terrainSourceParam && !selectedParam) {
+        if (!layersParam && !geolocateParam && !searchParam && !terrainParam && !animateParam && !fogParam && !wireframeParam && !terrainSourceParam && !fovParam && !selectedParam) {
             return false;
         }
 
@@ -849,6 +898,15 @@ export class URLManager {
             if (terrainSourceParam && window.terrain3DControl) {
                 applied = true;
                 window.terrain3DControl.setTerrainSource(terrainSourceParam);
+            }
+
+            // Handle fov parameter
+            if (fovParam && window.terrain3DControl) {
+                applied = true;
+                const fov = parseFloat(fovParam);
+                if (!isNaN(fov) && fov >= 0.1 && fov <= 1.5) {
+                    window.terrain3DControl.setFov(fov);
+                }
             }
 
             // Handle selected features parameter
@@ -1311,35 +1369,35 @@ export class URLManager {
      * Update terrain parameter in URL
      */
     updateTerrainParam(exaggeration) {
-        this.updateURL({ terrain: exaggeration });
+        this.updateURL({ terrain: exaggeration, updateLayers: false });
     }
 
     /**
      * Update animate parameter in URL
      */
     updateAnimateParam(animate) {
-        this.updateURL({ animate: animate });
+        this.updateURL({ animate: animate, updateLayers: false });
     }
 
     /**
      * Update fog parameter in URL
      */
     updateFogParam(enableFog) {
-        this.updateURL({ fog: enableFog });
+        this.updateURL({ fog: enableFog, updateLayers: false });
     }
 
     /**
      * Update wireframe parameter in URL
      */
     updateWireframeParam(showWireframe) {
-        this.updateURL({ wireframe: showWireframe });
+        this.updateURL({ wireframe: showWireframe, updateLayers: false });
     }
 
     /**
      * Update terrain source parameter in URL
      */
     updateTerrainSourceParam(terrainSource) {
-        this.updateURL({ terrainSource: terrainSource });
+        this.updateURL({ terrainSource: terrainSource, updateLayers: false });
     }
 
     /**
@@ -1347,5 +1405,19 @@ export class URLManager {
      */
     updateSearchParam(query) {
         this.updateURL({ search: query || '', updateLayers: false });
+    }
+
+    /**
+     * Update fov parameter in URL
+     */
+    updateFovParam(fov) {
+        this.updateURL({ fov: fov, updateLayers: false });
+    }
+
+    /**
+     * Update sound parameter in URL
+     */
+    updateSoundParam(visualizeSound) {
+        this.updateURL({ sound: visualizeSound, updateLayers: false });
     }
 }
