@@ -930,6 +930,62 @@ export class MapCreator {
         return style;
     }
 
+    calculateBBox(geojson) {
+        if (!geojson || !geojson.features || geojson.features.length === 0) {
+            return null;
+        }
+
+        let minLon = Infinity;
+        let minLat = Infinity;
+        let maxLon = -Infinity;
+        let maxLat = -Infinity;
+
+        const processCoordinate = (coord) => {
+            const [lon, lat] = coord;
+            if (lon < minLon) minLon = lon;
+            if (lon > maxLon) maxLon = lon;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+        };
+
+        const processCoordinates = (coords, depth) => {
+            if (depth === 0) {
+                processCoordinate(coords);
+            } else {
+                coords.forEach(c => processCoordinates(c, depth - 1));
+            }
+        };
+
+        geojson.features.forEach(feature => {
+            if (!feature.geometry || !feature.geometry.coordinates) return;
+
+            const { type, coordinates } = feature.geometry;
+
+            switch (type) {
+                case 'Point':
+                    processCoordinates(coordinates, 0);
+                    break;
+                case 'MultiPoint':
+                case 'LineString':
+                    processCoordinates(coordinates, 1);
+                    break;
+                case 'MultiLineString':
+                case 'Polygon':
+                    processCoordinates(coordinates, 2);
+                    break;
+                case 'MultiPolygon':
+                    processCoordinates(coordinates, 3);
+                    break;
+            }
+        });
+
+        if (minLon === Infinity || minLat === Infinity || maxLon === -Infinity || maxLat === -Infinity) {
+            return null;
+        }
+
+        return [minLon, minLat, maxLon, maxLat];
+    }
+
     generateLayerConfig() {
         if (this.currentLayerType === 'csv') {
             return this.generateCSVLayerConfig();
@@ -946,9 +1002,17 @@ export class MapCreator {
         const strokeColor = $('#stroke-color').val();
         const strokeWidth = $('#stroke-width').val();
 
-        const geojsonString = JSON.stringify(this.currentData);
-        const base64Data = btoa(unescape(encodeURIComponent(geojsonString)));
-        const dataUrl = `data:application/json;base64,${base64Data}`;
+        let dataUrl;
+        const isExternalUrl = typeof this.currentDataSource === 'string' &&
+            (this.currentDataSource.startsWith('http://') || this.currentDataSource.startsWith('https://'));
+
+        if (isExternalUrl) {
+            dataUrl = this.currentDataSource;
+        } else {
+            const geojsonString = JSON.stringify(this.currentData);
+            const base64Data = btoa(unescape(encodeURIComponent(geojsonString)));
+            dataUrl = `data:application/json;base64,${base64Data}`;
+        }
 
         const style = this.generateMapboxStyle(this.currentGeometryType, fillColor, strokeColor, strokeWidth);
 
@@ -960,6 +1024,8 @@ export class MapCreator {
         });
 
         const layerType = $('#layer-type').val() || 'geojson';
+
+        const bbox = this.calculateBBox(this.currentData);
 
         const config = {
             id: layerId,
@@ -981,6 +1047,14 @@ export class MapCreator {
 
         if (description) {
             config.description = description;
+        }
+
+        if (bbox) {
+            config.bbox = bbox;
+        }
+
+        if (nameField) {
+            config['text-field'] = nameField;
         }
 
         return config;
@@ -1005,6 +1079,8 @@ export class MapCreator {
 
         const layerType = $('#layer-type').val() || 'csv';
 
+        const bbox = this.currentData.geojson ? this.calculateBBox(this.currentData.geojson) : null;
+
         const config = {
             id: layerId,
             title: title,
@@ -1025,6 +1101,14 @@ export class MapCreator {
 
         if (description) {
             config.description = description;
+        }
+
+        if (bbox) {
+            config.bbox = bbox;
+        }
+
+        if (nameField) {
+            config['text-field'] = nameField;
         }
 
         return config;
