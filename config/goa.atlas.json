@@ -462,19 +462,7 @@
             "Open Sans Regular"
           ]
         ],
-        "fill-color": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          9,
-          "rgba(0, 0, 0, 0.1)",
-          18,
-          "rgba(0, 0, 0, 0.6)"
-        ],
+        "fill-color": "rgba(255, 255, 255, 0.6)",
         "line-color": "purple"
       },
       "inspect": {

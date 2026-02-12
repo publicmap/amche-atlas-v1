@@ -38,7 +38,6 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(0, 0, 0, 0.7);
             color: white;
             padding: 2mm;
             box-sizing: border-box;
@@ -90,6 +89,7 @@
             justify-content: center;
             font-size: 8px;
             color: #333;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .date-text {
@@ -104,26 +104,31 @@
             color: white;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 0.5mm 2mm;
+            border-radius: 1mm;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
-        
+
         .text-title {
             font-size: 10pt;
             font-weight: bold;
             line-height: 3.5mm;
+            padding: 1mm 2mm;
         }
-        
+
         .text-description {
             font-size: 8pt;
         }
-        
+
         .text-data {
             font-size: 7pt;
         }
-        
+
         .text-url {
             font-size: 7pt;
             word-break: break-all;
-            opacity: 0.3;
+            opacity: 0.8;
         }
         
         .scale-bar {
@@ -131,6 +136,10 @@
             flex-direction: column;
             align-items: center;
             gap: 1mm;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 2mm;
+            border-radius: 1mm;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
 
         .scale-bar-visual {
@@ -173,6 +182,10 @@
             align-items: center;
             justify-content: center;
             perspective: 50mm;
+            background: rgba(0, 0, 0, 0.75);
+            border-radius: 50%;
+            padding: 1mm;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
 
         .north-arrow-container {
@@ -309,30 +322,30 @@
     
     <div class="info-panel">
         <h2>PDF Layout Template</h2>
-        <p>This template shows the layout structure for the PDF export footer. The layout uses a three-column flex design with vertically centered content:</p>
+        <p>This template shows the layout structure for the PDF export footer. The layout uses a three-column flex design with vertically centered content and individual semi-transparent backgrounds:</p>
         <ul>
-            <li><strong>Left:</strong> Maximized QR code (20mm × 20mm)</li>
-            <li><strong>Center:</strong> Title, description with timestamp, data sources, and URL at 30% opacity (vertically centered, wraps as needed)</li>
-            <li><strong>Right:</strong> Scale bar and compass rose with 'N' indicator (centered with 3mm gap)</li>
+            <li><strong>Left:</strong> QR code (20mm × 20mm) with white background and shadow</li>
+            <li><strong>Center:</strong> Title, description with timestamp, data sources, and URL - each with semi-transparent black background (75% opacity)</li>
+            <li><strong>Right:</strong> Scale bar and compass rose with 'N' indicator - each with semi-transparent black background (75% opacity)</li>
         </ul>
         <p><strong>Key Measurements:</strong></p>
         <ul>
-            <li>Footer box padding: <code>2mm</code></li>
+            <li>Footer box padding: <code>2mm</code> (no background)</li>
             <li>Gap between columns: <code>4mm</code></li>
             <li>Gap between text elements: <code>1.2mm</code></li>
-            <li>Title line height: <code>3.5mm</code></li>
-            <li>Regular text line height: <code>2.2mm</code></li>
-            <li>QR code size: <code>20mm × 20mm</code> (maximized)</li>
+            <li>Element backgrounds: <code>rgba(0, 0, 0, 0.75)</code> with rounded corners and shadows</li>
+            <li>Text padding: <code>0.5mm-2mm</code> (varies by element)</li>
+            <li>QR code size: <code>20mm × 20mm</code></li>
             <li>Scale bar area: <code>~30mm width</code></li>
-            <li>North arrow: <code>10mm</code> circle (compass rose) with bold 'N' label replacing north tick, S/E/W ticks at 30% opacity</li>
+            <li>North arrow: <code>12mm</code> circular background with compass rose inside</li>
         </ul>
         <p><strong>Layout Enhancements:</strong></p>
         <ul>
-            <li>All columns vertically centered with <code>align-items: center</code></li>
-            <li>QR code margin removed for maximum size within footer</li>
-            <li>Timestamp included in description field to avoid duplication</li>
-            <li>URL displayed at 30% opacity for subtle reference</li>
-            <li>Scale and north arrow centered and spaced with <code>gap: 3mm</code></li>
+            <li>Individual semi-transparent backgrounds minimize visual intrusion on large prints</li>
+            <li>All elements have subtle shadows for depth and readability</li>
+            <li>QR code maintains white background for scanability</li>
+            <li>Text elements wrap naturally without full-width black bar</li>
+            <li>Scale and north arrow are compact and self-contained</li>
             <li>Compass rose design: circular border with bold 'N' at north position, subtle ticks (30% opacity) for S/E/W directions</li>
             <li>3D perspective transform: circle becomes elliptical when pitched, showing map plane tilt</li>
         </ul>

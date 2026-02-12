@@ -1019,10 +1019,12 @@
                 $exportBtn.text('Download');
             }
 
-            // Show/hide export frame for PDF, GeoTIFF, and DXF with raster
+            // Show/hide export frame for PDF, GeoTIFF, PNG, JPEG, and DXF with raster
             const shouldShowFrame =
                 currentFormat === 'pdf' ||
                 currentFormat === 'geotiff' ||
+                currentFormat === 'png' ||
+                currentFormat === 'jpeg' ||
                 (currentFormat === 'dxf' && $('#dxf-include-raster').is(':checked'));
 
             if (shouldShowFrame) {
@@ -1159,8 +1161,33 @@
             }
 
             if (currentFormat === 'png' || currentFormat === 'jpeg') {
-                exportConfig.width = 2048;
-                exportConfig.height = 2048;
+                const pageSize = $('#page-size').val();
+                const orientation = $('input[name="orientation"]:checked').val();
+
+                let size;
+                if (pageSize === 'Custom') {
+                    size = {
+                        w: parseFloat($('#custom-width').val()) || 297,
+                        h: parseFloat($('#custom-height').val()) || 210
+                    };
+                } else {
+                    const sizes = {
+                        'A4': orientation === 'portrait' ? { w: 210, h: 297 } : { w: 297, h: 210 },
+                        'A3': orientation === 'portrait' ? { w: 297, h: 420 } : { w: 420, h: 297 },
+                        'A2': orientation === 'portrait' ? { w: 420, h: 594 } : { w: 594, h: 420 },
+                        'A1': orientation === 'portrait' ? { w: 594, h: 841 } : { w: 841, h: 594 },
+                        'A0': orientation === 'portrait' ? { w: 841, h: 1189 } : { w: 1189, h: 841 },
+                        'Letter': orientation === 'portrait' ? { w: 216, h: 279 } : { w: 279, h: 216 },
+                        'Legal': orientation === 'portrait' ? { w: 216, h: 356 } : { w: 356, h: 216 }
+                    };
+                    size = sizes[pageSize] || sizes['A4'];
+                }
+
+                exportConfig.width = size.w;
+                exportConfig.height = size.h;
+                exportConfig.dpi = parseInt($('#dpi-select').val());
+                exportConfig.title = $('#map-title').val();
+                exportConfig.description = $('#map-description').val();
             }
 
             if (currentFormat === 'geojson' || currentFormat === 'kml' || currentFormat === 'dxf') {
@@ -1212,6 +1239,8 @@
             const needsProcessing =
                 currentFormat === 'pdf' ||
                 currentFormat === 'geotiff' ||
+                currentFormat === 'png' ||
+                currentFormat === 'jpeg' ||
                 (currentFormat === 'dxf' && exportConfig.includeRaster);
 
             if (needsProcessing) {

@@ -917,25 +917,190 @@ export class MapExportControl {
     }
 
     async _exportPNG(config) {
-        this._sendProgress(20, 'Capturing canvas');
-        const canvas = this._map.getCanvas();
-        const dataUrl = canvas.toDataURL('image/png');
-        const blob = await fetch(dataUrl).then(r => r.blob());
+        this._sendProgress(10, 'Preparing PNG export');
 
-        this._sendProgress(80, 'Downloading file');
-        const filename = this._generateFilename('png');
-        this._downloadFile(blob, filename, 'image/png');
+        const widthMm = config.width;
+        const heightMm = config.height;
+        const dpi = config.dpi || 96;
+
+        const targetWidth = Math.round((widthMm * dpi) / 25.4);
+        const targetHeight = Math.round((heightMm * dpi) / 25.4);
+
+        const frameBounds = this._frame.getBounds();
+
+        const container = this._map.getContainer();
+        const originalWidth = container.style.width;
+        const originalHeight = container.style.height;
+        const originalCenter = this._map.getCenter();
+        const originalZoom = this._map.getZoom();
+        const originalBearing = this._map.getBearing();
+        const originalPitch = this._map.getPitch();
+
+        this._frame.hide();
+
+        return new Promise((resolve, reject) => {
+            const capture = async () => {
+                try {
+                    if (this._exportCancelled) {
+                        throw new Error('Export cancelled');
+                    }
+
+                    this._sendProgress(50, 'Capturing map');
+                    const canvas = this._map.getCanvas();
+                    let dataUrl = canvas.toDataURL('image/png');
+
+                    const actualPixelWidth = canvas.width;
+                    const actualPixelHeight = canvas.height;
+
+                    this._sendProgress(60, 'Adding attribution');
+                    dataUrl = await this._addFooterToRaster(dataUrl, actualPixelWidth, actualPixelHeight, originalCenter, originalBearing);
+
+                    const blob = await fetch(dataUrl).then(r => r.blob());
+
+                    this._sendProgress(80, 'Downloading file');
+                    const filename = this._generateFilename('png');
+                    this._downloadFile(blob, filename, 'image/png');
+
+                    this._sendProgress(95, 'Restoring map');
+
+                    container.style.width = originalWidth;
+                    container.style.height = originalHeight;
+                    this._map.resize();
+                    this._map.jumpTo({
+                        center: originalCenter,
+                        zoom: originalZoom,
+                        bearing: originalBearing,
+                        pitch: originalPitch
+                    });
+
+                    resolve();
+                } catch (error) {
+                    container.style.width = originalWidth;
+                    container.style.height = originalHeight;
+                    this._map.resize();
+                    reject(error);
+                }
+            };
+
+            container.style.width = targetWidth + 'px';
+            container.style.height = targetHeight + 'px';
+            this._map.resize();
+
+            this._map.once('idle', () => {
+                this._map.fitBounds(frameBounds, {
+                    padding: 0,
+                    bearing: originalBearing,
+                    pitch: originalPitch,
+                    animate: false
+                });
+
+                this._map.once('idle', () => {
+                    capture().then(resolve).catch(reject);
+                });
+            });
+        });
     }
 
     async _exportJPEG(config) {
-        this._sendProgress(20, 'Capturing canvas');
-        const canvas = this._map.getCanvas();
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-        const blob = await fetch(dataUrl).then(r => r.blob());
+        this._sendProgress(10, 'Preparing JPEG export');
 
-        this._sendProgress(80, 'Downloading file');
-        const filename = this._generateFilename('jpg');
-        this._downloadFile(blob, filename, 'image/jpeg');
+        const widthMm = config.width;
+        const heightMm = config.height;
+        const dpi = config.dpi || 96;
+
+        const targetWidth = Math.round((widthMm * dpi) / 25.4);
+        const targetHeight = Math.round((heightMm * dpi) / 25.4);
+
+        const frameBounds = this._frame.getBounds();
+
+        const container = this._map.getContainer();
+        const originalWidth = container.style.width;
+        const originalHeight = container.style.height;
+        const originalCenter = this._map.getCenter();
+        const originalZoom = this._map.getZoom();
+        const originalBearing = this._map.getBearing();
+        const originalPitch = this._map.getPitch();
+
+        this._frame.hide();
+
+        return new Promise((resolve, reject) => {
+            const capture = async () => {
+                try {
+                    if (this._exportCancelled) {
+                        throw new Error('Export cancelled');
+                    }
+
+                    this._sendProgress(50, 'Capturing map');
+                    const canvas = this._map.getCanvas();
+                    let dataUrl = canvas.toDataURL('image/png');
+
+                    const actualPixelWidth = canvas.width;
+                    const actualPixelHeight = canvas.height;
+
+                    this._sendProgress(60, 'Adding attribution');
+                    dataUrl = await this._addFooterToRaster(dataUrl, actualPixelWidth, actualPixelHeight, originalCenter, originalBearing);
+
+                    this._sendProgress(70, 'Converting to JPEG');
+                    const tempImg = new Image();
+                    await new Promise((resolve, reject) => {
+                        tempImg.onload = resolve;
+                        tempImg.onerror = reject;
+                        tempImg.src = dataUrl;
+                    });
+
+                    const jpegCanvas = document.createElement('canvas');
+                    jpegCanvas.width = actualPixelWidth;
+                    jpegCanvas.height = actualPixelHeight;
+                    const ctx = jpegCanvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, actualPixelWidth, actualPixelHeight);
+                    ctx.drawImage(tempImg, 0, 0);
+                    dataUrl = jpegCanvas.toDataURL('image/jpeg', 0.92);
+
+                    const blob = await fetch(dataUrl).then(r => r.blob());
+
+                    this._sendProgress(80, 'Downloading file');
+                    const filename = this._generateFilename('jpg');
+                    this._downloadFile(blob, filename, 'image/jpeg');
+
+                    this._sendProgress(95, 'Restoring map');
+
+                    container.style.width = originalWidth;
+                    container.style.height = originalHeight;
+                    this._map.resize();
+                    this._map.jumpTo({
+                        center: originalCenter,
+                        zoom: originalZoom,
+                        bearing: originalBearing,
+                        pitch: originalPitch
+                    });
+
+                    resolve();
+                } catch (error) {
+                    container.style.width = originalWidth;
+                    container.style.height = originalHeight;
+                    this._map.resize();
+                    reject(error);
+                }
+            };
+
+            container.style.width = targetWidth + 'px';
+            container.style.height = targetHeight + 'px';
+            this._map.resize();
+
+            this._map.once('idle', () => {
+                this._map.fitBounds(frameBounds, {
+                    padding: 0,
+                    bearing: originalBearing,
+                    pitch: originalPitch,
+                    animate: false
+                });
+
+                this._map.once('idle', () => {
+                    capture().then(resolve).catch(reject);
+                });
+            });
+        });
     }
 
     async _exportHTML(config) {
