@@ -1,7 +1,7 @@
 # These are supported funding model platforms
 
-github: [osgeo,osm-in]
+github: [osgeo,openstreetmap]
 open_collective: amche-atlas
 liberapay: # Replace with a single Liberapay username
 thanks_dev: # Replace with a single thanks.dev username
-custom: ['https://goafoundation.org']
+custom: ['https://www.openstreetmap.org/#map=17/15.589877/73.811908','https://goafoundation.org']
