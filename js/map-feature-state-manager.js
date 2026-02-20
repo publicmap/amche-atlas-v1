@@ -21,6 +21,7 @@ export class MapFeatureStateManager extends EventTarget {
         this._retryDelay = 2000; // 2 seconds
         this._eventListenerRefs = new Map(); // Store event listener references for cleanup
         this._featureControl = null; // Reference to feature control for inspect mode checking
+        this._handlerResultsCache = new Map(); // Cache for handler execution results: compositeKey -> HTML
 
         // Performance optimization
         this._batchedUpdates = new Set();
@@ -43,12 +44,54 @@ export class MapFeatureStateManager extends EventTarget {
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Meta' || event.key === 'Control') {
                 this._isCmdCtrlPressed = true;
+                // Notify inspector to update button state
+                window.postMessage({
+                    type: 'add-selection-mode-changed',
+                    enabled: true
+                }, '*');
             }
         });
         document.addEventListener('keyup', (event) => {
             if (event.key === 'Meta' || event.key === 'Control') {
                 this._isCmdCtrlPressed = false;
+                // Notify inspector to update button state
+                window.postMessage({
+                    type: 'add-selection-mode-changed',
+                    enabled: false
+                }, '*');
             }
+        });
+
+        // Center-point hover tracking
+        this._centerHoverEnabled = false;
+        this._lastCenterHoverUpdate = 0;
+
+        // Device detection for hover behavior
+        this._isTouchDevice = this._detectTouchDevice();
+
+        // Track map movement to preserve hover states during pan
+        this._isMapMoving = false;
+        this._setupMapMovementTracking();
+    }
+
+    /**
+     * Detect if device is a touch device
+     * @returns {boolean} True if device has coarse pointer (touch)
+     */
+    _detectTouchDevice() {
+        return window.matchMedia('(pointer: coarse)').matches;
+    }
+
+    /**
+     * Set up map movement tracking to preserve hover states during pan
+     */
+    _setupMapMovementTracking() {
+        this._map.on('movestart', () => {
+            this._isMapMoving = true;
+        });
+
+        this._map.on('moveend', () => {
+            this._isMapMoving = false;
         });
     }
 
@@ -147,6 +190,11 @@ export class MapFeatureStateManager extends EventTarget {
      * @param {Object} lngLat - Mouse coordinates
      */
     onFeatureHover(feature, layerId, lngLat) {
+        // Don't update hover states during map movement (pan/zoom)
+        if (this._isMapMoving) {
+            return;
+        }
+
         if (!feature || !layerId) return;
 
         const featureId = this._getFeatureId(feature);
@@ -167,8 +215,8 @@ export class MapFeatureStateManager extends EventTarget {
             timestamp: Date.now()
         });
 
-        // Set mapbox feature state for visual feedback
-        this._setMapboxFeatureState(featureId, layerId, { hover: true });
+        // Set mapbox feature state for visual feedback on all related layers
+        this._setMapboxFeatureStateAllLayers(featureId, layerId, { hover: true });
 
         // Update line layer sort keys for z-ordering
         this._updateLineSortKeys();
@@ -194,6 +242,11 @@ export class MapFeatureStateManager extends EventTarget {
      * @param {Object} globalLngLat - Global mouse coordinates
      */
     handleFeatureHovers(hoveredFeatures, globalLngLat) {
+        // Don't update hover states during map movement (pan/zoom)
+        if (this._isMapMoving) {
+            return;
+        }
+
         if (!hoveredFeatures || hoveredFeatures.length === 0) {
             this.handleMapMouseLeave();
             return;
@@ -221,8 +274,8 @@ export class MapFeatureStateManager extends EventTarget {
                 timestamp: Date.now()
             });
 
-            // Set mapbox feature state for visual feedback
-            this._setMapboxFeatureState(featureId, layerId, { hover: true });
+            // Set mapbox feature state for visual feedback on all related layers
+            this._setMapboxFeatureStateAllLayers(featureId, layerId, { hover: true });
 
             affectedLayers.add(layerId);
             processedFeatures.push({
@@ -262,6 +315,11 @@ export class MapFeatureStateManager extends EventTarget {
      * Handle mouse leaving the map area
      */
     handleMapMouseLeave() {
+        // Don't clear hover states during map movement
+        if (this._isMapMoving) {
+            return;
+        }
+
         // Clear all hover timeouts
         this._hoverTimeouts.forEach(timeout => clearTimeout(timeout));
         this._hoverTimeouts.clear();
@@ -271,6 +329,14 @@ export class MapFeatureStateManager extends EventTarget {
 
         // Update line layer sort keys for z-ordering
         this._updateLineSortKeys();
+
+        // Return to center hover only on touch devices (not pointer devices)
+        // Only if enabled AND no selections exist
+        if (this._isTouchDevice && this._centerHoverEnabled && this._selectedFeatures.size === 0) {
+            setTimeout(() => {
+                this.triggerCenterHover();
+            }, 100);
+        }
 
         // Emit map mouse leave event
         this._emitStateChange('map-mouse-leave', {
@@ -292,7 +358,7 @@ export class MapFeatureStateManager extends EventTarget {
                 // Remove mapbox feature state
                 const { layerId, feature } = featureState;
                 const featureId = this._getFeatureId(feature);
-                this._removeMapboxFeatureState(featureId, layerId, 'hover');
+                this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'hover');
 
                 clearedFeatures.push({
                     featureId,
@@ -341,7 +407,7 @@ export class MapFeatureStateManager extends EventTarget {
 
                     // Remove mapbox feature state
                     const featureId = this._getFeatureId(featureState.feature);
-                    this._removeMapboxFeatureState(featureId, featureState.layerId, 'selected');
+                    this._removeMapboxFeatureStateAllLayers(featureId, featureState.layerId, 'selected');
 
                     clearedFeatures.push({
                         featureId,
@@ -363,9 +429,9 @@ export class MapFeatureStateManager extends EventTarget {
             const featureId = this._getFeatureId(feature);
             const compositeKey = this._getCompositeKey(layerId, featureId);
 
-            // Toggle selection if Cmd/Ctrl is pressed
-            if (this._isCmdCtrlPressed && this._selectedFeatures.has(compositeKey)) {
-                this._deselectFeature(featureId, layerId);
+            // If already selected, keep it selected (don't toggle)
+            // Only clear buttons should remove selections
+            if (this._selectedFeatures.has(compositeKey)) {
                 return;
             }
 
@@ -381,8 +447,8 @@ export class MapFeatureStateManager extends EventTarget {
             // Add to selected features set
             this._selectedFeatures.add(compositeKey);
 
-            // Set mapbox feature state for visual feedback
-            this._setMapboxFeatureState(featureId, layerId, { selected: true });
+            // Set mapbox feature state for visual feedback on all related layers
+            this._setMapboxFeatureStateAllLayers(featureId, layerId, { selected: true });
 
             newSelections.push({
                 featureId,
@@ -484,8 +550,11 @@ export class MapFeatureStateManager extends EventTarget {
         // Remove from selected set
         this._selectedFeatures.delete(compositeKey);
 
+        // Clear handler results cache for this feature
+        this._handlerResultsCache.delete(compositeKey);
+
         // Remove mapbox feature state
-        this._removeMapboxFeatureState(featureId, layerId, 'selected');
+        this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'selected');
 
         // Update line layer sort keys for z-ordering
         this._updateLineSortKeys();
@@ -518,7 +587,7 @@ export class MapFeatureStateManager extends EventTarget {
 
                 // Remove mapbox feature state
                 const featureId = this._getFeatureId(featureState.feature);
-                this._removeMapboxFeatureState(featureId, featureState.layerId, 'selected');
+                this._removeMapboxFeatureStateAllLayers(featureId, featureState.layerId, 'selected');
 
                 clearedFeatures.push({
                     featureId,
@@ -558,7 +627,7 @@ export class MapFeatureStateManager extends EventTarget {
 
                 // Remove mapbox feature state
                 const featureId = this._getFeatureId(featureState.feature);
-                this._removeMapboxFeatureState(featureId, layerId, 'selected');
+                this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'selected');
 
                 clearedFeatures.push({
                     featureId,
@@ -669,6 +738,100 @@ export class MapFeatureStateManager extends EventTarget {
     }
 
     /**
+     * Get features at the center of the map canvas
+     * @returns {Array} Array of {feature, layerId} objects
+     */
+    getFeaturesAtCenter() {
+        const center = this._map.getCenter();
+        const centerPixel = this._map.project(center);
+        const point = [centerPixel.x, centerPixel.y];
+
+        const features = [];
+
+        this._registeredLayers.forEach((layerConfig, layerId) => {
+            if (this._isRasterLayer(layerConfig)) {
+                return;
+            }
+
+            const matchingLayerIds = this._getMatchingLayerIds(layerConfig);
+
+            matchingLayerIds.forEach(actualLayerId => {
+                try {
+                    const layerFeatures = this._map.queryRenderedFeatures(point, {
+                        layers: [actualLayerId]
+                    });
+
+                    layerFeatures.forEach(feature => {
+                        features.push({
+                            feature,
+                            layerId: layerConfig.id,
+                            lngLat: this._map.unproject(point)
+                        });
+                    });
+                } catch (error) {
+                    console.warn(`[StateManager] Error querying center features for ${actualLayerId}:`, error);
+                }
+            });
+        });
+
+        return features;
+    }
+
+    /**
+     * Trigger hover for features at the center of the map
+     * Called when map moves or on keyboard navigation
+     */
+    triggerCenterHover() {
+        const now = Date.now();
+        if (now - this._lastCenterHoverUpdate < 100) {
+            return;
+        }
+        this._lastCenterHoverUpdate = now;
+
+        const centerFeatures = this.getFeaturesAtCenter();
+
+        if (centerFeatures.length > 0) {
+            this.handleFeatureHovers(centerFeatures, centerFeatures[0].lngLat);
+        } else {
+            this.handleMapMouseLeave();
+        }
+    }
+
+    /**
+     * Trigger selection for features at the center of the map
+     * Called on spacebar press
+     */
+    triggerCenterSelection() {
+        const centerFeatures = this.getFeaturesAtCenter();
+
+        if (centerFeatures.length > 0) {
+            this.handleFeatureClicks(centerFeatures);
+        }
+    }
+
+    /**
+     * Enable or disable center-point hover tracking
+     * @param {boolean} enabled - Whether center hover is enabled
+     */
+    setCenterHoverEnabled(enabled) {
+        this._centerHoverEnabled = enabled;
+
+        if (enabled) {
+            this.triggerCenterHover();
+        } else {
+            this.handleMapMouseLeave();
+        }
+    }
+
+    /**
+     * Check if center hover is enabled
+     * @returns {boolean} True if center hover is enabled
+     */
+    isCenterHoverEnabled() {
+        return this._centerHoverEnabled;
+    }
+
+    /**
      * Set hover state for a specific feature
      * @param {string} layerId - Layer ID
      * @param {string|number} featureId - Feature ID
@@ -688,10 +851,10 @@ export class MapFeatureStateManager extends EventTarget {
 
         if (hoverState) {
             featureState.isHovered = true;
-            this._setMapboxFeatureState(featureId, layerId, { hover: true });
+            this._setMapboxFeatureStateAllLayers(featureId, layerId, { hover: true });
         } else {
             featureState.isHovered = false;
-            this._removeMapboxFeatureState(featureId, layerId, 'hover');
+            this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'hover');
         }
     }
 
@@ -708,7 +871,7 @@ export class MapFeatureStateManager extends EventTarget {
             if (featureState.layerId === layerId && featureState.isHovered) {
                 featureState.isHovered = false;
                 const featureId = this._getFeatureId(featureState.feature);
-                this._removeMapboxFeatureState(featureId, layerId, 'hover');
+                this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'hover');
             }
         });
     }
@@ -980,7 +1143,7 @@ export class MapFeatureStateManager extends EventTarget {
 
                 // Remove mapbox feature state
                 const featureId = this._getFeatureId(featureState.feature);
-                this._removeMapboxFeatureState(featureId, layerId, 'hover');
+                this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'hover');
 
                 clearedFeatures.push({
                     featureId,
@@ -1005,11 +1168,14 @@ export class MapFeatureStateManager extends EventTarget {
                 const featureId = this._getFeatureId(featureState.feature);
 
                 // Remove mapbox feature states
-                this._removeMapboxFeatureState(featureId, layerId, 'hover');
-                this._removeMapboxFeatureState(featureId, layerId, 'selected');
+                this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'hover');
+                this._removeMapboxFeatureStateAllLayers(featureId, layerId, 'selected');
 
                 this._featureStates.delete(compositeKey);
                 this._selectedFeatures.delete(compositeKey);
+
+                // Clear handler results cache
+                this._handlerResultsCache.delete(compositeKey);
 
                 removedFeatures.push(featureId);
             }
@@ -1190,6 +1356,22 @@ export class MapFeatureStateManager extends EventTarget {
             return;
         }
 
+        const featureId = this._getFeatureId(feature);
+        const compositeKey = this._getCompositeKey(layerId, featureId);
+
+        // Check cache first
+        if (this._handlerResultsCache.has(compositeKey)) {
+            const cachedHTML = this._handlerResultsCache.get(compositeKey);
+            this._emitStateChange('feature-inspection-data', {
+                featureId,
+                layerId,
+                feature,
+                customHTML: cachedHTML,
+                lngLat
+            });
+            return;
+        }
+
         const handlerName = layerConfig.inspect.onClick;
 
         // Determine atlas name from layer config
@@ -1210,9 +1392,12 @@ export class MapFeatureStateManager extends EventTarget {
             );
 
             if (customHTML) {
+                // Cache the result
+                this._handlerResultsCache.set(compositeKey, customHTML);
+
                 // Emit event with custom HTML for inspector to display
                 this._emitStateChange('feature-inspection-data', {
-                    featureId: this._getFeatureId(feature),
+                    featureId,
                     layerId,
                     feature,
                     customHTML,
@@ -1286,6 +1471,7 @@ export class MapFeatureStateManager extends EventTarget {
         this._registeredLayers.clear();
         this._retryAttempts.clear();
         this._eventListenerRefs.clear();
+        this._handlerResultsCache.clear();
 
         // Remove keydown and keyup event listeners
         document.removeEventListener('keydown', this._keydownListener);
@@ -1368,6 +1554,113 @@ export class MapFeatureStateManager extends EventTarget {
         } catch (error) {
             if (this._isDebug) {
                 console.warn(`[StateManager] Could not remove feature state for ${featureId}:`, error);
+            }
+        }
+    }
+
+    /**
+     * Set Mapbox feature state on all matching style layers for a layer config
+     * This ensures that symbol, fill, line, and other style layers all get the same state
+     */
+    _setMapboxFeatureStateAllLayers(featureId, layerId, state) {
+        try {
+            const layerConfig = this._registeredLayers.get(layerId);
+            if (!layerConfig) return;
+
+            if (layerConfig.type === 'style') {
+                return;
+            }
+
+            const rawFeatureId = this._extractRawFeatureId(featureId);
+            const source = layerConfig.source || `${layerConfig.type}-${layerId}`;
+
+            // Get all matching style layer IDs for this layer config
+            const matchingLayerIds = this._getMatchingLayerIds(layerConfig);
+
+            if (matchingLayerIds.length === 0) {
+                // Fallback to single layer state setting
+                this._setMapboxFeatureState(featureId, layerId, state);
+                return;
+            }
+
+            // Get the style to check sourceLayer for each style layer
+            const style = this._mapboxAPI.getStyle();
+            if (!style.layers) return;
+
+            // Set feature state for each matching style layer
+            matchingLayerIds.forEach(styleLayerId => {
+                const styleLayer = style.layers.find(l => l.id === styleLayerId);
+                if (!styleLayer) return;
+
+                const featureIdentifier = {
+                    source: styleLayer.source || source,
+                    id: rawFeatureId
+                };
+
+                if (styleLayer['source-layer']) {
+                    featureIdentifier.sourceLayer = styleLayer['source-layer'];
+                } else if (layerConfig.sourceLayer) {
+                    featureIdentifier.sourceLayer = layerConfig.sourceLayer;
+                }
+
+                this._mapboxAPI.setFeatureState(featureIdentifier, state);
+            });
+        } catch (error) {
+            if (this._isDebug) {
+                console.warn(`[StateManager] Could not set feature state on all layers for ${featureId}:`, error);
+            }
+        }
+    }
+
+    /**
+     * Remove Mapbox feature state from all matching style layers for a layer config
+     */
+    _removeMapboxFeatureStateAllLayers(featureId, layerId, stateKey = null) {
+        try {
+            const layerConfig = this._registeredLayers.get(layerId);
+            if (!layerConfig) return;
+
+            if (layerConfig.type === 'style') {
+                return;
+            }
+
+            const rawFeatureId = this._extractRawFeatureId(featureId);
+            const source = layerConfig.source || `${layerConfig.type}-${layerId}`;
+
+            // Get all matching style layer IDs for this layer config
+            const matchingLayerIds = this._getMatchingLayerIds(layerConfig);
+
+            if (matchingLayerIds.length === 0) {
+                // Fallback to single layer state removal
+                this._removeMapboxFeatureState(featureId, layerId, stateKey);
+                return;
+            }
+
+            // Get the style to check sourceLayer for each style layer
+            const style = this._mapboxAPI.getStyle();
+            if (!style.layers) return;
+
+            // Remove feature state from each matching style layer
+            matchingLayerIds.forEach(styleLayerId => {
+                const styleLayer = style.layers.find(l => l.id === styleLayerId);
+                if (!styleLayer) return;
+
+                const featureIdentifier = {
+                    source: styleLayer.source || source,
+                    id: rawFeatureId
+                };
+
+                if (styleLayer['source-layer']) {
+                    featureIdentifier.sourceLayer = styleLayer['source-layer'];
+                } else if (layerConfig.sourceLayer) {
+                    featureIdentifier.sourceLayer = layerConfig.sourceLayer;
+                }
+
+                this._mapboxAPI.removeFeatureState(featureIdentifier, stateKey);
+            });
+        } catch (error) {
+            if (this._isDebug) {
+                console.warn(`[StateManager] Could not remove feature state from all layers for ${featureId}:`, error);
             }
         }
     }

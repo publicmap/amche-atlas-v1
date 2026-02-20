@@ -23,7 +23,6 @@
     "goa",
     "chennai",
     "mumbai",
-    "bombay",
     "bengaluru",
     "gurugram",
     "maharashtra",
@@ -71,8 +70,37 @@
   },
   "layers": [
     {
-      "id": "mapbox-streets",
+      "tags": [
+        "poi"
+      ],
+      "title": "Selected Points",
+      "description": "GeoJSON of selected points from the map.",
+      "headerImage": null,
+      "type": "geojson",
+      "id": "selection",
+      "geojson": null,
+      "attribution": "<a href='https://amche.in'>Amche.in Atlas</a>",
+      "style": {
+        "circle-radius": 2,
+        "circle-color": "blue",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "blue",
+        "text-font": [
+          "Open Sans Regular"
+        ],
+        "text-field": [
+          "get",
+          "name"
+        ]
+      },
+      "inspect": {
+        "id": "name"
+      },
       "initiallyChecked": true
+    },
+    {
+      "id": "mapbox-streets",
+      "initiallyChecked": false
     },
     {
       "id": "goa-plots",
@@ -83,71 +111,22 @@
       "initiallyChecked": true
     },
     {
-      "id": "goa-notified-wetlands"
-    },
-    {
-      "id": "goa-notified-bunds"
-    },
-    {
-      "id": "goa-notified-khazan"
-    },
-    {
-      "id": "india-parivesh"
-    },
-    {
-      "id": "goa-2025-water-body-atlas"
-    },
-    {
-      "id": "goa-private-forests"
-    },
-    {
-      "id": "india-forests"
-    },
-    {
-      "id": "india-wildlife-reserve"
-    },
-    {
-      "id": "india-crz"
-    },
-    {
-      "id": "india-monuments"
-    },
-    {
-      "id": "india-mining"
-    },
-    {
-      "id": "goa-slope"
-    },
-    {
-      "id": "goa-amrut-panjim-landuse"
-    },
-    {
       "id": "india-state",
       "initiallyChecked": true
     },
     {
-      "id": "india-2023-open-buildings",
-      "initiallyChecked": true
-    },
-    {
-      "id": "india-2024-landslide-susceptibility-map"
-    },
-    {
-      "id": "india-2019-czmp-map"
+      "id": "india-2023-open-buildings"
     },
     {
       "id": "goa-2021-regional-plan",
       "initiallyChecked": true
     },
     {
-      "id": "goa-ams-map"
-    },
-    {
       "id": "osm-mapnik"
     },
     {
       "id": "mapbox-countries",
-      "initiallyChecked": true
+      "initiallyChecked": false
     },
     {
       "id": "mapbox-satellite",

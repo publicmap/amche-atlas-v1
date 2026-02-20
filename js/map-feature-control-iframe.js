@@ -5,6 +5,8 @@
  * Uses map-inspector.html for the UI instead of building it in JavaScript.
  */
 
+import { MapMarkerManager } from './map-marker-manager.js';
+
 export class MapFeatureControl {
     constructor() {
         this.options = {
@@ -16,14 +18,18 @@ export class MapFeatureControl {
 
         this._map = null;
         this._stateManager = null;
+        this._markerManager = null;
         this._container = null;
         this._panel = null;
         this._iframe = null;
         this._config = null;
         this._globalHandlersAdded = false;
+        this._isMapDragging = false;
+        this._lastMouseMoveTime = Date.now();
         this._isIframeReady = false;
         this._messageQueue = [];
         this._inspectorInitialized = false;
+        this._lastMouseMoveTime = 0;
 
         // Click popup state
         this._clickPopup = null;
@@ -43,6 +49,7 @@ export class MapFeatureControl {
         this._createContainer();
         this._setupMessageListener();
         this._setupMapEventListeners();
+        this._setupKeyboardListeners();
         return this._container;
     }
 
@@ -87,6 +94,9 @@ export class MapFeatureControl {
         // Link the state manager to this control for inspect mode checking
         this._stateManager.setFeatureControl(this);
 
+        // Initialize marker manager
+        this._markerManager = new MapMarkerManager(this._map, this._stateManager);
+
         // Listen to state changes from the centralized manager
         this._stateChangeListener = (event) => {
             this._handleStateChange(event.detail);
@@ -95,6 +105,16 @@ export class MapFeatureControl {
 
         // Set up global map interaction handlers for hover/click
         this._setupGlobalInteractionHandlers();
+
+        // Enable center hover for keyboard navigation
+        this._stateManager.setCenterHoverEnabled(true);
+
+        // Trigger initial center hover after a short delay
+        setTimeout(() => {
+            if (this._stateManager.isCenterHoverEnabled()) {
+                this._stateManager.triggerCenterHover();
+            }
+        }, 500);
 
         // Send initial data to iframe
         this._sendDataToIframe();
@@ -242,7 +262,7 @@ export class MapFeatureControl {
         // Close panel when clicking outside
         setTimeout(() => {
             document.addEventListener('click', (e) => {
-                if (!e.target.closest('.map-feature-panel, .mapboxgl-ctrl-icon, .mapboxgl-canvas-container, .map-browser-panel, #map-browser-modal, .mapboxgl-ctrl-group')) {
+                if (!e.target.closest('.map-feature-panel, .mapboxgl-ctrl-icon, .mapboxgl-canvas-container, .map-browser-panel, #map-browser-modal, .mapboxgl-ctrl-group, .mapboxgl-popup, .selection-popup')) {
                     this._hidePanel();
                 }
             });
@@ -346,6 +366,33 @@ export class MapFeatureControl {
         this._boundsUpdateListener = sendBoundsUpdate;
     }
 
+    _setupKeyboardListeners() {
+        this._keydownListener = (event) => {
+            if (event.key === 'Meta' || event.key === 'Control') {
+                if (this._iframe && this._iframe.contentWindow) {
+                    this._iframe.contentWindow.postMessage({
+                        type: 'add-selection-mode-changed',
+                        enabled: true
+                    }, '*');
+                }
+            }
+        };
+
+        this._keyupListener = (event) => {
+            if (event.key === 'Meta' || event.key === 'Control') {
+                if (this._iframe && this._iframe.contentWindow) {
+                    this._iframe.contentWindow.postMessage({
+                        type: 'add-selection-mode-changed',
+                        enabled: false
+                    }, '*');
+                }
+            }
+        };
+
+        document.addEventListener('keydown', this._keydownListener);
+        document.addEventListener('keyup', this._keyupListener);
+    }
+
     /**
      * Setup message listener for iframe communication
      */
@@ -385,6 +432,15 @@ export class MapFeatureControl {
             } else if (event.data.type === 'clear-all-selections') {
                 if (this._stateManager) {
                     this._stateManager.clearAllSelections();
+                }
+            } else if (event.data.type === 'set-add-selection-mode') {
+                if (this._markerManager) {
+                    const mode = event.data.enabled ? 'add' : 'replace';
+                    this._markerManager.setSelectionMode(mode);
+                }
+                // Also update state manager Cmd/Ctrl flag
+                if (this._stateManager) {
+                    this._stateManager._isCmdCtrlPressed = event.data.enabled;
                 }
             } else if (event.data.type === 'open-layer-info') {
                 this._openLayerInfo(event.data.layer);
@@ -703,7 +759,6 @@ export class MapFeatureControl {
                 }
 
                 this._sendFeatureSelectionToIframe(data.layerId, data.feature, data.featureId);
-                this._showPanel(); // Auto-open panel when feature is clicked
 
                 // Show click popup if enabled
                 if (this._showClickPopups) {
@@ -722,7 +777,6 @@ export class MapFeatureControl {
                 data.selectedFeatures.forEach(selection => {
                     this._sendFeatureSelectionToIframe(selection.layerId, selection.feature, selection.featureId);
                 });
-                this._showPanel();
 
                 // Show click popup for the first selected feature if enabled
                 if (this._showClickPopups && data.selectedFeatures.length > 0) {
@@ -1402,6 +1456,14 @@ export class MapFeatureControl {
             this._map.off('moveend', this._boundsUpdateListener);
             this._map.off('zoomend', this._boundsUpdateListener);
         }
+
+        // Clean up keyboard listeners
+        if (this._keydownListener) {
+            document.removeEventListener('keydown', this._keydownListener);
+        }
+        if (this._keyupListener) {
+            document.removeEventListener('keyup', this._keyupListener);
+        }
     }
 
     /**
@@ -1498,6 +1560,8 @@ export class MapFeatureControl {
         const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         if (!isTouchDevice) {
             this._map.on('mousemove', (e) => {
+                // Track mouse movement for center hover prioritization
+                this._lastMouseMoveTime = Date.now();
                 this._handleMouseMove(e);
             });
         }
@@ -1509,6 +1573,42 @@ export class MapFeatureControl {
 
         this._map.on('mouseout', () => {
             this._stateManager.handleMapMouseLeave();
+        });
+
+        // Track map dragging state
+        this._map.on('dragstart', () => {
+            this._isMapDragging = true;
+        });
+
+        this._map.on('dragend', () => {
+            this._isMapDragging = false;
+
+            // Trigger center hover after drag ends on touch devices
+            if (this._stateManager.isCenterHoverEnabled()) {
+                // Small delay to allow map to settle
+                setTimeout(() => {
+                    this._stateManager.triggerCenterHover();
+                }, 100);
+            }
+        });
+
+        // Map move handler for center hover (keyboard navigation support)
+        this._map.on('move', () => {
+            const timeSinceMouseMove = Date.now() - this._lastMouseMoveTime;
+            const isMouseInactive = timeSinceMouseMove > 500;
+
+            if (this._stateManager.isCenterHoverEnabled() &&
+                isMouseInactive &&
+                !this._isMapDragging) {
+                this._stateManager.triggerCenterHover();
+            }
+        });
+
+        // Window message listener for center selection (spacebar trigger)
+        window.addEventListener('message', (event) => {
+            if (event.data.type === 'trigger-center-selection') {
+                this._stateManager.triggerCenterSelection();
+            }
         });
 
         this._globalHandlersAdded = true;
