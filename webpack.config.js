@@ -40,7 +40,6 @@ module.exports = {
                         return content;
                     }
                 },
-                { from: 'data', to: 'data' },
                 { from: 'docs', to: 'docs' },
                 { from: 'assets', to: 'assets' },
                 { from: 'config', to: 'config' },
@@ -60,6 +59,8 @@ module.exports = {
                 { from: 'offline.html', to: 'offline.html' },
                 { from: 'privacy.html', to: 'privacy.html' },
                 { from: 'manifest.json', to: 'manifest.json' },
+                { from: 'service-worker.js', to: 'service-worker.js' },
+                { from: '.nojekyll', to: '.nojekyll' },
                 { from: 'bus', to: 'bus' },
                 { from: 'game', to: 'game' },
                 { from: 'warper', to: 'warper' },

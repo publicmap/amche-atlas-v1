@@ -44,7 +44,7 @@ jobs:
           mkdir -p temp_main
           git clone --branch main --depth 1 https://github.com/${{ github.repository }} temp_main
 
-      # Install dependencies and Build Webpack for main
+      # Install dependencies and Build with Webpack for main
       - name: Build main branch
         run: |
           cd temp_main
@@ -80,7 +80,7 @@ jobs:
           mkdir -p temp_dev
           git clone --branch dev --depth 1 https://github.com/${{ github.repository }} temp_dev
 
-      # Install dependencies and Build Webpack for dev
+      # Install dependencies and Build with Webpack for dev
       - name: Build dev branch
         if: env.dev_exists == 'true'
         run: |
