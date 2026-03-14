@@ -917,7 +917,7 @@
           ]
         ]
       },
-      "initiallyChecked": false,
+      "initiallyChecked": true,
       "inspect": {
         "id": "id",
         "title": "Survey Number",
