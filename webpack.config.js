@@ -51,6 +51,7 @@ module.exports = {
                 { from: 'game', to: 'game' },
                 { from: 'sound', to: 'sound' },
                 { from: 'pages', to: 'pages' },
+                { from: 'CNAME', to: 'CNAME' },
             ],
         }),
     ],
