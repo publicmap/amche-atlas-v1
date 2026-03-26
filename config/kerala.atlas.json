@@ -11,42 +11,6 @@
     ],
     "zoom": 6.7
   },
-  "geojson": {
-    "type": "FeatureCollection",
-    "features": [
-      {
-        "type": "Feature",
-        "properties": {},
-        "geometry": {
-          "coordinates": [
-            [
-              [
-                74.52330664480766,
-                13.123843996620153
-              ],
-              [
-                74.52330664480766,
-                8.121259759194885
-              ],
-              [
-                77.51253355584305,
-                8.121259759194885
-              ],
-              [
-                77.51253355584305,
-                13.123843996620153
-              ],
-              [
-                74.52330664480766,
-                13.123843996620153
-              ]
-            ]
-          ],
-          "type": "Polygon"
-        }
-      }
-    ]
-  },
   "layers": [
     {
       "title": "Kerala NCSCM Coastal Cadastrals",
@@ -249,6 +213,10 @@
           "rgba(255, 255, 255, 0.5)"
         ]
       }
+    },
+    {
+      "initiallyChecked": true,
+      "id": "mapbox-satellite"
     }
   ]
 }

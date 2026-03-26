@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   // Root directory for the project
   root: '.',
-
+  
   // Public directory for static assets
   publicDir: 'assets',
   
@@ -22,13 +22,7 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       input: {
-        main: 'index.html',
-        'map-browser': 'map-browser.html',
-        'map-creator': 'map-creator.html',
-        'map-export': 'map-export.html',
-        'map-inspector': 'map-inspector.html',
-        'map-information': 'map-information.html',
-        'map-export-layout': 'map-export-layout.html'
+        main: 'index.html'
       }
     }
   },

@@ -5,18 +5,8 @@ import cors from 'cors';
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Enhanced CORS configuration
-const corsOptions = {
-    origin: '*',
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['*'],
-    credentials: false,
-    maxAge: 86400 // 24 hours
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.use(cors());
+app.options('*', cors());
 
 app.get('/proxy', async (req, res) => {
     try {
@@ -45,65 +35,37 @@ app.get('/proxy', async (req, res) => {
 
         const refererHeader = customReferer || `${parsedUrl.protocol}//${parsedUrl.host}/`;
 
-        console.log(`[Proxy] ===== New Request =====`);
         console.log(`[Proxy] ${req.method} ${targetUrl}`);
         console.log(`[Proxy] Referer: ${refererHeader}`);
-        console.log(`[Proxy] Request origin: ${req.headers.origin || 'none'}`);
 
         const response = await fetch(targetUrl, {
             method: req.method,
             headers: {
-                'Accept': 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
                 'Referer': refererHeader,
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
             }
         });
 
-        console.log(`[Proxy] Response status: ${response.status} ${response.statusText}`);
-        console.log(`[Proxy] Response content-type: ${response.headers.get('content-type')}`);
-
         if (!response.ok) {
-            console.error(`[Proxy] ❌ Target returned ${response.status}: ${response.statusText}`);
-            console.error(`[Proxy] Target URL: ${targetUrl}`);
-            console.error(`[Proxy] Response headers:`, Object.fromEntries(response.headers));
-
-            // For 403 errors, provide more details
-            if (response.status === 403) {
-                const bodyText = await response.text();
-                console.error(`[Proxy] Response body:`, bodyText.substring(0, 500));
-            }
-
+            console.error(`[Proxy] Target returned ${response.status}: ${response.statusText}`);
             return res.status(response.status).json({
                 error: 'Target request failed',
                 status: response.status,
-                statusText: response.statusText,
-                targetUrl: targetUrl
+                statusText: response.statusText
             });
         }
 
-        console.log(`[Proxy] ✓ Success! Returning ${response.headers.get('content-length') || 'unknown'} bytes`);
-
-        // Set CORS headers FIRST to ensure they're not overridden
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-        res.setHeader('Access-Control-Expose-Headers', '*');
-        res.setHeader('Cache-Control', `public, max-age=${cacheSeconds}`);
-
-        // Set content type from response
         const contentType = response.headers.get('content-type');
         if (contentType) {
             res.setHeader('Content-Type', contentType);
         }
 
-        // Get the response body
-        const buffer = await response.arrayBuffer();
+        res.setHeader('Cache-Control', `public, max-age=${cacheSeconds}`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-        // Send the response
+        const buffer = await response.arrayBuffer();
         res.send(Buffer.from(buffer));
 
     } catch (error) {
@@ -134,47 +96,9 @@ app.get('/health', (req, res) => {
         examples: {
             simple: '/proxy?url=https://example.com/image.jpg',
             with_referer: '/proxy?url=https://api.example.com/data&referer=https://example.com/',
-            with_cache: '/proxy?url=https://api.example.com/live-data&cache=60',
-            gatishakti_test: '/proxy?url=https://ugi.pmgatishakti.gov.in/ugi-public-api-3/gis/mirroeLiss/IV/10/721/467&referer=https://ugi.pmgatishakti.gov.in/'
+            with_cache: '/proxy?url=https://api.example.com/live-data&cache=60'
         }
     });
-});
-
-app.get('/test-gatishakti', async (req, res) => {
-    const testUrl = 'https://ugi.pmgatishakti.gov.in/ugi-public-api-3/gis/mirroeLiss/IV/10/721/467';
-
-    try {
-        console.log(`[Test] Fetching ${testUrl}`);
-
-        const response = await fetch(testUrl, {
-            method: 'GET',
-            headers: {
-                'Accept': 'image/webp,image/avif,image/jxl,image/heic,image/heic-sequence,video/*;q=0.8,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Referer': 'https://ugi.pmgatishakti.gov.in/',
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-            }
-        });
-
-        res.json({
-            status: response.ok ? 'success' : 'failed',
-            statusCode: response.status,
-            statusText: response.statusText,
-            headers: Object.fromEntries(response.headers),
-            contentType: response.headers.get('content-type'),
-            bodySize: response.headers.get('content-length')
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            status: 'error',
-            message: error.message,
-            stack: error.stack
-        });
-    }
 });
 
 app.listen(PORT, () => {

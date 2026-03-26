@@ -77,16 +77,17 @@ export class DataUtils {
      */
     static parseCSV(csvText) {
         if (!csvText) return [];
+        const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
+        if (lines.length === 0) return [];
 
-        const records = this.parseCSVRecords(csvText);
-        if (records.length === 0) return [];
-
-        const headers = records[0];
+        let headerLine = lines[0];
         let dataStartIndex = 1;
+        const headers = this.parseCSVLine(headerLine);
 
-        for (let i = 1; i < records.length; i++) {
-            if (records[i].length === headers.length &&
-                records[i].every((val, idx) => val.trim() === headers[idx].trim())) {
+        for (let i = 1; i < lines.length; i++) {
+            const currentLine = this.parseCSVLine(lines[i]);
+            if (currentLine.length === headers.length &&
+                currentLine.every((val, idx) => val.trim() === headers[idx].trim())) {
                 dataStartIndex = i + 1;
             } else {
                 break;
@@ -94,8 +95,8 @@ export class DataUtils {
         }
 
         const rows = [];
-        for (let i = dataStartIndex; i < records.length; i++) {
-            const values = records[i];
+        for (let i = dataStartIndex; i < lines.length; i++) {
+            const values = this.parseCSVLine(lines[i]);
             if (values.length !== headers.length) continue;
             const row = {};
             headers.forEach((header, index) => {
@@ -104,53 +105,6 @@ export class DataUtils {
             rows.push(row);
         }
         return rows;
-    }
-
-    static parseCSVRecords(csvText) {
-        const records = [];
-        let currentRecord = [];
-        let currentField = '';
-        let inQuotes = false;
-
-        for (let i = 0; i < csvText.length; i++) {
-            const char = csvText[i];
-            const nextChar = i + 1 < csvText.length ? csvText[i + 1] : null;
-
-            if (char === '"') {
-                if (inQuotes && nextChar === '"') {
-                    currentField += '"';
-                    i++;
-                } else {
-                    inQuotes = !inQuotes;
-                }
-            } else if (char === ',' && !inQuotes) {
-                currentRecord.push(currentField);
-                currentField = '';
-            } else if ((char === '\n' || char === '\r') && !inQuotes) {
-                if (char === '\r' && nextChar === '\n') {
-                    i++;
-                }
-                if (currentField.length > 0 || currentRecord.length > 0) {
-                    currentRecord.push(currentField);
-                    if (currentRecord.some(f => f.trim().length > 0)) {
-                        records.push(currentRecord);
-                    }
-                    currentRecord = [];
-                    currentField = '';
-                }
-            } else {
-                currentField += char;
-            }
-        }
-
-        if (currentField.length > 0 || currentRecord.length > 0) {
-            currentRecord.push(currentField);
-            if (currentRecord.some(f => f.trim().length > 0)) {
-                records.push(currentRecord);
-            }
-        }
-
-        return records;
     }
 
     /**
@@ -297,70 +251,43 @@ export class GeoUtils {
      * @param {boolean} debug - Enable debug logging
      * @returns {Object} GeoJSON FeatureCollection
      */
-    static rowsToGeoJSON(rows, debug = false, explicitLatField = null, explicitLonField = null) {
+    static rowsToGeoJSON(rows, debug = false) {
         if (!rows || rows.length === 0) {
             if (debug) console.warn('No rows provided to rowsToGeoJSON');
             return { type: 'FeatureCollection', features: [] };
         }
 
-        let lonField = explicitLonField;
-        let latField = explicitLatField;
+        const lonPatterns = ['lon', 'lng', 'longitude', 'x', 'long'];
+        const latPatterns = ['lat', 'latitude', 'y'];
+        let lonField = null;
+        let latField = null;
 
-        if (!lonField || !latField) {
-            const lonPatterns = [
-                'lon', 'lng', 'longitude', 'long',
-                'x', 'easting',
-                'lon_dd', 'lng_dd', 'decimal_longitude',
-                'gps_lon', 'gps_lng',
-                'geo_lon', 'geo_lng',
-                'point_x', 'coord_x'
-            ];
-            const latPatterns = [
-                'lat', 'latitude',
-                'y', 'northing',
-                'lat_dd', 'decimal_latitude',
-                'gps_lat',
-                'geo_lat',
-                'point_y', 'coord_y'
-            ];
+        const firstRow = rows[0];
+        const matchesPattern = (field, pattern) => {
+            const fieldLower = field.toLowerCase();
+            const patternLower = pattern.toLowerCase();
+            if (fieldLower === patternLower) return 2;
+            if (fieldLower.includes(patternLower)) return 1;
+            return 0;
+        };
 
-            const firstRow = rows[0];
-            const matchesPattern = (field, pattern) => {
-                const fieldLower = field.trim().toLowerCase();
-                const patternLower = pattern.toLowerCase();
-                if (fieldLower === patternLower) return 2;
-                if (fieldLower.includes(patternLower)) return 1;
-                return 0;
-            };
+        let bestLonScore = 0;
+        let bestLatScore = 0;
 
-            let bestLonScore = 0;
-            let bestLatScore = 0;
-
-            for (const field of Object.keys(firstRow)) {
-                for (const pattern of lonPatterns) {
-                    const score = matchesPattern(field, pattern);
-                    if (score > bestLonScore) {
-                        bestLonScore = score;
-                        lonField = field;
-                    }
-                }
-                for (const pattern of latPatterns) {
-                    const score = matchesPattern(field, pattern);
-                    if (score > bestLatScore) {
-                        bestLatScore = score;
-                        latField = field;
-                    }
+        for (const field of Object.keys(firstRow)) {
+            for (const pattern of lonPatterns) {
+                const score = matchesPattern(field, pattern);
+                if (score > bestLonScore) {
+                    bestLonScore = score;
+                    lonField = field;
                 }
             }
-
-            if (debug) {
-                console.log('CSV field detection:', {
-                    columns: Object.keys(firstRow),
-                    detectedLat: latField,
-                    detectedLon: lonField,
-                    latScore: bestLatScore,
-                    lonScore: bestLonScore
-                });
+            for (const pattern of latPatterns) {
+                const score = matchesPattern(field, pattern);
+                if (score > bestLatScore) {
+                    bestLatScore = score;
+                    latField = field;
+                }
             }
         }
 
@@ -562,49 +489,6 @@ export class URLUtils {
 }
 
 export class MapUtils {
-    // Cache for parsed geometries and bboxes (cleared on layer updates)
-    static _geometryCache = new Map(); // layerId -> { bbox, geojson, lastUpdated }
-
-    /**
-     * Clear the geometry cache (call when layers are updated)
-     */
-    static clearGeometryCache() {
-        this._geometryCache.clear();
-    }
-
-    /**
-     * Get or create cached geometry data for a layer
-     * @private
-     */
-    static _getCachedGeometry(layer) {
-        const layerId = layer.id;
-
-        // Check cache first
-        if (this._geometryCache.has(layerId)) {
-            return this._geometryCache.get(layerId);
-        }
-
-        // Parse and cache geometry data
-        const cached = {
-            bbox: this.parseBbox(layer.bbox),
-            geojson: null,
-            hasGeojson: false
-        };
-
-        // Check if layer has geojson
-        if (layer.geojson) {
-            cached.hasGeojson = true;
-            // Don't parse geojson yet - do it lazily when needed
-            cached.geojsonRaw = layer.geojson;
-        } else if (layer.data && typeof layer.data === 'object' && layer.data.type === 'FeatureCollection') {
-            cached.hasGeojson = true;
-            cached.geojson = layer.data;
-        }
-
-        this._geometryCache.set(layerId, cached);
-        return cached;
-    }
-
     /**
      * Converts longitude and latitude coordinates to Web Mercator projection
      * @param {number} lng - Longitude coordinate
@@ -667,235 +551,6 @@ export class MapUtils {
         // Return a list of known config files based on the file structure
         // This could be made dynamic by fetching a directory listing in the future
         return ['index', 'maharashtra', 'community', 'historic', 'bombay', 'mumbai', 'madras', 'gurugram'].join(', ');
-    }
-
-    /**
-     * Parse bbox from various formats (string, array) to [west, south, east, north] array
-     * @param {string|Array} bbox - Bounding box as string "w,s,e,n" or array [w,s,e,n]
-     * @returns {Array|null} Parsed bbox as [west, south, east, north] or null if invalid
-     */
-    static parseBbox(bbox) {
-        if (!bbox) return null;
-
-        let parsed;
-        if (typeof bbox === 'string') {
-            parsed = bbox.split(',').map(parseFloat);
-        } else if (Array.isArray(bbox)) {
-            parsed = bbox;
-        } else {
-            return null;
-        }
-
-        if (parsed.length !== 4 || parsed.some(isNaN)) return null;
-        return parsed;
-    }
-
-    /**
-     * Check if a layer's bbox intersects with given bounds
-     * Optimized two-stage approach: bbox check first, then geojson if needed
-     * @param {Object} layer - Layer object with bbox and/or geojson property
-     * @param {Array} bounds - Current map bounds [west, south, east, north]
-     * @param {boolean} usePreciseCheck - If true, use geojson for precise check when available
-     * @returns {boolean} True if layer is in view (or has no bbox), false otherwise
-     */
-    static isLayerInView(layer, bounds, usePreciseCheck = true) {
-        if (!bounds) return true;
-
-        // Get cached geometry data
-        const cached = this._getCachedGeometry(layer);
-
-        // Stage 1: Fast bbox rejection test
-        if (cached.bbox) {
-            const [layerW, layerS, layerE, layerN] = cached.bbox;
-            const [boundsW, boundsS, boundsE, boundsN] = bounds;
-
-            // Quick rejection: no intersection at all
-            if (layerE < boundsW || layerW > boundsE ||
-                layerN < boundsS || layerS > boundsN) {
-                return false;
-            }
-
-            // Quick acceptance: layer bbox completely contains view bounds
-            if (layerW <= boundsW && layerE >= boundsE &&
-                layerS <= boundsS && layerN >= boundsN) {
-                return true;
-            }
-
-            // If no geojson or precise check disabled, accept bbox intersection
-            if (!cached.hasGeojson || !usePreciseCheck) {
-                return true;
-            }
-        } else if (!cached.hasGeojson) {
-            // No bbox and no geojson - assume it's in view
-            return true;
-        }
-
-        // Stage 2: Precise geojson intersection (only if Turf.js available)
-        if (cached.hasGeojson && typeof turf !== 'undefined') {
-            try {
-                // Parse geojson if not already parsed
-                if (!cached.geojson && cached.geojsonRaw) {
-                    if (typeof cached.geojsonRaw === 'string') {
-                        cached.geojson = JSON.parse(cached.geojsonRaw);
-                    } else {
-                        cached.geojson = cached.geojsonRaw;
-                    }
-                }
-
-                if (cached.geojson) {
-                    const boundsPolygon = turf.bboxPolygon(bounds);
-
-                    // Handle FeatureCollection
-                    if (cached.geojson.type === 'FeatureCollection') {
-                        // Check if any feature intersects
-                        for (const feature of cached.geojson.features) {
-                            if (turf.booleanIntersects(feature, boundsPolygon)) {
-                                return true;
-                            }
-                        }
-                        return false;
-                    }
-
-                    // Handle single Feature or Geometry
-                    return turf.booleanIntersects(cached.geojson, boundsPolygon);
-                }
-            } catch (e) {
-                // Fall back to bbox result if geojson check fails
-                console.warn('GeoJSON intersection check failed:', e);
-            }
-        }
-
-        // Default: if bbox intersected, accept it
-        return cached.bbox ? true : true;
-    }
-
-    /**
-     * Calculate the area of a bounding box
-     * @param {string|Array} bbox - Bounding box as string or array
-     * @returns {number} Area in square meters (if Turf available) or square degrees, or Infinity if invalid
-     */
-    static calculateBboxArea(bbox) {
-        const parsed = this.parseBbox(bbox);
-        if (!parsed) return Infinity;
-
-        // Use Turf.js for accurate area calculation in square meters
-        if (typeof turf !== 'undefined') {
-            try {
-                const polygon = turf.bboxPolygon(parsed);
-                return turf.area(polygon); // Returns area in square meters
-            } catch (e) {
-                // Fall back to simple calculation
-            }
-        }
-
-        // Fallback: simple calculation in square degrees
-        const [west, south, east, north] = parsed;
-        const width = east - west;
-        const height = north - south;
-        return width * height;
-    }
-
-    /**
-     * Calculate distance from bbox center to a reference point
-     * @param {string|Array} bbox - Bounding box as string or array
-     * @param {number} refLng - Reference longitude
-     * @param {number} refLat - Reference latitude
-     * @returns {number} Distance in kilometers (if Turf available) or Euclidean distance in degrees, or Infinity if invalid
-     */
-    static calculateBboxDistance(bbox, refLng, refLat) {
-        const parsed = this.parseBbox(bbox);
-        if (!parsed) return Infinity;
-
-        const [west, south, east, north] = parsed;
-        const centerLng = (west + east) / 2;
-        const centerLat = (south + north) / 2;
-
-        // Use Turf.js for accurate geodesic distance calculation
-        if (typeof turf !== 'undefined') {
-            try {
-                const from = turf.point([refLng, refLat]);
-                const to = turf.point([centerLng, centerLat]);
-                return turf.distance(from, to); // Returns distance in kilometers
-            } catch (e) {
-                // Fall back to simple calculation
-            }
-        }
-
-        // Fallback: simple Euclidean distance in degrees
-        const dx = centerLng - refLng;
-        const dy = centerLat - refLat;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    /**
-     * Get the center point of a bounding box
-     * @param {string|Array} bbox - Bounding box as string or array
-     * @returns {Object|null} Object with lng and lat properties, or null if invalid
-     */
-    static getBboxCenter(bbox) {
-        const parsed = this.parseBbox(bbox);
-        if (!parsed) return null;
-
-        // Use Turf.js for accurate centroid calculation
-        if (typeof turf !== 'undefined') {
-            try {
-                const polygon = turf.bboxPolygon(parsed);
-                const center = turf.center(polygon);
-                return {
-                    lng: center.geometry.coordinates[0],
-                    lat: center.geometry.coordinates[1]
-                };
-            } catch (e) {
-                // Fall back to simple calculation
-            }
-        }
-
-        // Fallback: simple midpoint calculation
-        const [west, south, east, north] = parsed;
-        return {
-            lng: (west + east) / 2,
-            lat: (south + north) / 2
-        };
-    }
-
-    /**
-     * Check if a layer is a global/world layer based on bbox and metadata
-     * @param {Object} layer - Layer object
-     * @param {Object} atlasData - Atlas metadata object (optional)
-     * @returns {boolean} True if layer is global
-     */
-    static isGlobalLayer(layer, atlasData = null) {
-        // Check atlas name for global indicators
-        const atlasName = (atlasData?.name || layer._sourceAtlas || '').toLowerCase();
-        if (atlasName.includes('world') || atlasName.includes('global') ||
-            atlasName.includes('mapbox') || atlasName.includes('osm')) {
-            return true;
-        }
-
-        // Check if layer type is a Mapbox style layer
-        if (layer.type === 'style' || layer.type === 'raster-style-layer') {
-            return true;
-        }
-
-        // Check if layer ID suggests it's global
-        const layerId = (layer.id || '').toLowerCase();
-        if (layerId.startsWith('mapbox-') || layerId.startsWith('osm-') ||
-            layerId.includes('world-') || layerId.includes('global-')) {
-            return true;
-        }
-
-        // Check if bbox covers entire world
-        if (layer.bbox) {
-            const parsed = this.parseBbox(layer.bbox);
-            if (parsed) {
-                const [west, south, east, north] = parsed;
-                if (west <= -170 && east >= 170 && south <= -80 && north >= 80) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**

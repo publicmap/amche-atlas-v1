@@ -6,7 +6,7 @@ export class Terrain3DControl {
         this.options = {
             initialExaggeration: 1.5,
             minExaggeration: 0,
-            maxExaggeration: 20.0,
+            maxExaggeration: 100.0,
             step: 0.5,
             ...options
         };
@@ -17,7 +17,6 @@ export class Terrain3DControl {
         this._showWireframe = false; // Default to disabled
         this._enableFog = true; // Default to enabled
         this._visualizeSound = false; // Default to disabled
-        this._fov = 0.643; // Default FOV in radians (~36.87°)
         this._animationFrame = null; // For requestAnimationFrame
         this._panel = null;
         this._map = null;
@@ -277,7 +276,7 @@ export class Terrain3DControl {
         });
 
         const $soundLabel = $('<label>', {
-            text: 'Dancing Terrain',
+            text: 'Dance',
             'for': 'terrain-3d-sound',
             css: {
                 cursor: 'pointer',
@@ -324,7 +323,7 @@ export class Terrain3DControl {
         });
 
         const $sliderLabel = $('<label>', {
-            text: 'Vertical Terrain Scale',
+            text: 'Vertical Exaggeration',
             css: {
                 display: 'block',
                 marginBottom: '5px',
@@ -345,42 +344,7 @@ export class Terrain3DControl {
         });
 
         const $sliderValue = $('<span>', {
-            id: 'terrain-3d-exaggeration-value',
             text: this._exaggeration.toFixed(1),
-            css: {
-                fontSize: '12px',
-                color: '#666',
-                fontWeight: 'bold'
-            }
-        });
-
-        // FOV slider
-        const $fovLabel = $('<label>', {
-            text: 'Field of View',
-            css: {
-                display: 'block',
-                marginTop: '15px',
-                marginBottom: '5px',
-                fontWeight: '500'
-            }
-        });
-
-        const $fovSlider = $('<input>', {
-            type: 'range',
-            id: 'terrain-3d-fov-slider',
-            min: 0.1,
-            max: 1.5,
-            step: 0.01,
-            value: this._fov,
-            css: {
-                width: '100%',
-                marginBottom: '5px'
-            }
-        });
-
-        const $fovValue = $('<span>', {
-            id: 'terrain-3d-fov-value',
-            text: (this._fov * (180 / Math.PI)).toFixed(1) + '°',
             css: {
                 fontSize: '12px',
                 color: '#666',
@@ -416,7 +380,7 @@ export class Terrain3DControl {
 
         $wireframeContainer.append($wireframeCheckbox, $wireframeLabel);
 
-        $sliderContainer.append($sliderLabel, $slider, $sliderValue, $fovLabel, $fovSlider, $fovValue, $wireframeContainer, $soundContainer);
+        $sliderContainer.append($sliderLabel, $slider, $sliderValue, $wireframeContainer, $soundContainer);
 
         // Close button
         const $closeButton = $('<button>', {
@@ -437,25 +401,8 @@ export class Terrain3DControl {
             }
         });
 
-        // Reset button (placed at the bottom of the panel)
-        const $resetButton = $('<button>', {
-            text: 'Reset to Defaults',
-            css: {
-                width: '100%',
-                marginTop: '15px',
-                padding: '8px',
-                backgroundColor: '#f0f0f0',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#333'
-            }
-        });
-
         // Assemble panel
-        $content.append($title, $terrainSourceContainer, $animateContainer, $fogContainer, $checkboxContainer, $sliderContainer, $resetButton);
+        $content.append($title, $terrainSourceContainer, $animateContainer, $fogContainer, $checkboxContainer, $sliderContainer);
         this._panel.append($closeButton, $content);
 
         // Add event handlers
@@ -498,24 +445,6 @@ export class Terrain3DControl {
             if (this._enabled) {
                 this._updateTerrain();
             }
-        });
-
-        $fovSlider.on('input', (e) => {
-            this._fov = parseFloat(e.target.value);
-            $fovValue.text((this._fov * (180 / Math.PI)).toFixed(1) + '°');
-            this._updateFov();
-        });
-
-        $resetButton.on('click', () => {
-            this._resetToDefaults();
-        });
-
-        $resetButton.on('mouseenter', function() {
-            $(this).css('backgroundColor', '#e0e0e0');
-        });
-
-        $resetButton.on('mouseleave', function() {
-            $(this).css('backgroundColor', '#f0f0f0');
         });
 
         $closeButton.on('click', () => {
@@ -752,30 +681,6 @@ export class Terrain3DControl {
         this._updateWireframeURLParameter();
     }
 
-    _updateFov() {
-        if (!this._map) return;
-
-        // Set the field of view using internal API
-        this._map.transform._fov = this._fov;
-        this._map.transform._calcMatrices();
-        this._map.triggerRepaint();
-
-        // Update URL parameter
-        this._updateFovURLParameter();
-    }
-
-    _resetToDefaults() {
-        // Reset all values to defaults
-        this.setTerrainSource('mapbox');
-        this.setAnimate(false);
-        this.setFog(true);
-        this.setEnabled(true);
-        this.setExaggeration(this.options.initialExaggeration);
-        this.setWireframe(false);
-        this.setVisualizeSound(false);
-        this.setFov(0.643);
-    }
-
     _updateWireframeURLParameter() {
         // Skip URL updates during initialization to prevent encoding issues
         if (this._initializing) {
@@ -792,30 +697,6 @@ export class Terrain3DControl {
                 url.searchParams.set('wireframe', 'true');
             } else {
                 url.searchParams.delete('wireframe');
-            }
-
-            // Update URL without reloading the page
-            window.history.replaceState({}, '', url);
-        }
-    }
-
-    _updateFovURLParameter() {
-        // Skip URL updates during initialization to prevent encoding issues
-        if (this._initializing) {
-            return;
-        }
-
-        // Use URL API if available, otherwise fall back to direct URL manipulation
-        if (window.urlManager && window.urlManager.updateFovParam) {
-            window.urlManager.updateFovParam(this._fov);
-        } else {
-            // Fallback to direct URL manipulation
-            const url = new URL(window.location);
-            // Only set if not default (0.643 is default)
-            if (Math.abs(this._fov - 0.643) > 0.001) {
-                url.searchParams.set('fov', this._fov.toFixed(3));
-            } else {
-                url.searchParams.delete('fov');
             }
 
             // Update URL without reloading the page
@@ -881,8 +762,8 @@ export class Terrain3DControl {
     setExaggeration(exaggeration) {
         this._exaggeration = Math.max(this.options.minExaggeration,
             Math.min(this.options.maxExaggeration, exaggeration));
-        $('input[type="range"]', this._panel).first().val(this._exaggeration);
-        $('#terrain-3d-exaggeration-value').text(this._exaggeration.toFixed(1));
+        $('input[type="range"]', this._panel).val(this._exaggeration);
+        $('.terrain-3d-panel span').text(this._exaggeration.toFixed(1));
         if (this._enabled) {
             this._updateTerrain();
         }
@@ -947,17 +828,6 @@ export class Terrain3DControl {
 
     getVisualizeSound() {
         return this._visualizeSound;
-    }
-
-    setFov(fov) {
-        this._fov = Math.max(0.1, Math.min(1.5, fov));
-        $('#terrain-3d-fov-slider').val(this._fov);
-        $('#terrain-3d-fov-value').text((this._fov * (180 / Math.PI)).toFixed(1) + '°');
-        this._updateFov();
-    }
-
-    getFov() {
-        return this._fov;
     }
 
     async _updateAudioVisualization() {
@@ -1107,7 +977,6 @@ export class Terrain3DControl {
         const terrainSourceParam = urlParams.get('terrainSource');
         const fogParam = urlParams.get('fog');
         const soundParam = urlParams.get('sound');
-        const fovParam = urlParams.get('fov');
 
         // Handle terrain source parameter first
         if (terrainSourceParam && this._terrainSources[terrainSourceParam]) {
@@ -1161,14 +1030,6 @@ export class Terrain3DControl {
             this.setVisualizeSound(true);
         } else {
             this.setVisualizeSound(false);
-        }
-
-        // Handle fov parameter
-        if (fovParam) {
-            const fov = parseFloat(fovParam);
-            if (!isNaN(fov) && fov >= 0.1 && fov <= 1.5) {
-                this.setFov(fov);
-            }
         }
 
         // Clear initialization flag to allow normal URL updates

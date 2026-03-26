@@ -5,11 +5,8 @@ import { LayerRegistry } from './layer-registry.js';
 import './mapbox-api.js';
 import { MapInitializer } from './map-init.js';
 import { PermalinkManager } from './permalink-manager.js';
+import { NavigationControl } from './navigation-control.js';
 import { IntroContentManager } from './intro-content-manager.js';
-import { initializeKeyboardController } from './keyboard-controller.js';
-
-// Make IntroContentManager available globally for inline navigation menu
-window.IntroContentManager = IntroContentManager;
 
 function loadGoogleAnalytics() {
     if (window.location.hostname === window.amche.DOMAIN_URL) {
@@ -42,11 +39,11 @@ $(window).on('load', function () {
 
     loadGoogleAnalytics();
 
-    initializeKeyboardController();
+    const navigationControl = new NavigationControl();
+    navigationControl.render();
 
     MapInitializer.initializeMap().then(() => {
-        MapInitializer.initializeSearch();
-        initializeKeyboardController();
+        MapInitializer.initializeSearch(); // Now window.map exists, so we can initialize search
     });
 
     if (window.amche.ENABLE_INTRO_CONTENT === true) {
@@ -54,4 +51,14 @@ $(window).on('load', function () {
     }
 })
 
-
+// Register service worker
+/*
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .catch((error) => {
+                console.error('Service Worker registration failed:', error);
+            });
+    });
+}
+*/

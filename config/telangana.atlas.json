@@ -11,42 +11,6 @@
     ],
     "zoom": 6.7
   },
-  "geojson": {
-    "type": "FeatureCollection",
-    "features": [
-      {
-        "type": "Feature",
-        "properties": {},
-        "geometry": {
-          "coordinates": [
-            [
-              [
-                77.1966990912693,
-                20.014390115414514
-              ],
-              [
-                77.1966990912693,
-                15.868723173685993
-              ],
-              [
-                81.39975110915873,
-                15.868723173685993
-              ],
-              [
-                81.39975110915873,
-                20.014390115414514
-              ],
-              [
-                77.1966990912693,
-                20.014390115414514
-              ]
-            ]
-          ],
-          "type": "Polygon"
-        }
-      }
-    ]
-  },
   "layers": [
     {
       "title": "Telangana Cadastrals",
@@ -226,6 +190,10 @@
           "rgba(255, 255, 255, 0.5)"
         ]
       }
+    },
+    {
+      "initiallyChecked": true,
+      "id": "mapbox-satellite"
     }
   ]
 }

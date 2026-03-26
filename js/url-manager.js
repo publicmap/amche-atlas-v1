@@ -3,15 +3,12 @@
  * Supports deep linking with ?atlas=X and ?layers=X parameters
  */
 
-import { LayerOrderManager } from './layer-order-manager.js';
-
 export class URLManager {
     constructor(mapLayerControl, map) {
         this.mapLayerControl = mapLayerControl;
         this.map = map;
         this.isUpdatingFromURL = false; // Prevent circular updates
         this.pendingURLUpdate = null; // Debounce URL updates
-        this.stateManager = null; // Reference to feature state manager
 
         // Set up browser history handling
         this.setupHistoryHandling();
@@ -22,40 +19,13 @@ export class URLManager {
         $(document).on('update_url', this.updateGeolocateParam );
     }
 
-    setStateManager(stateManager) {
-        this.stateManager = stateManager;
-
-        if (stateManager) {
-            stateManager.addEventListener('state-change', (event) => {
-                const { eventType, data } = event.detail;
-                if (eventType === 'feature-click' ||
-                    eventType === 'feature-click-multiple' ||
-                    eventType === 'selections-cleared' ||
-                    eventType === 'selection-cleared' ||
-                    eventType === 'feature-deselected') {
-                    if (!this.isUpdatingFromURL && !data?.fromURL) {
-                        // Check if selection layer has features - if so, update layers too
-                        let updateLayers = false;
-                        if (this.mapLayerControl) {
-                            const selectionLayer = this.mapLayerControl._state.groups.find(g => g.id === 'selection');
-                            if (selectionLayer?.geojson?.features?.length > 0) {
-                                updateLayers = true;
-                            }
-                        }
-                        this.updateURL({ updateSelections: true, updateLayers });
-                    }
-                }
-            });
-        }
-    }
-
     /**
      * Convert a layer config to a URL-friendly representation
      * Uses normalized IDs (without atlas prefix for current atlas layers)
      */
     layerToURL(layer) {
         // If the layer has an _originalJson property and no opacity override, use it to preserve the original formatting
-        if (layer._originalJson && layer.opacity === undefined && !layer.geojson) {
+        if (layer._originalJson && layer.opacity === undefined) {
             return layer._originalJson;
         }
 
@@ -67,37 +37,29 @@ export class URLManager {
             layerId = window.layerRegistry.normalizeLayerId(layer.id);
         }
 
-        // If it's a simple layer with just an ID (no opacity, geojson, or other properties), return the normalized ID
-        const simpleLayerKeys = Object.keys(layer).filter(k =>
-            !k.startsWith('_') &&
-            k !== 'tags' &&
-            k !== 'initiallyChecked' &&
-            k !== 'geojson'
-        );
-
-        if (layer.id && simpleLayerKeys.length === 1 && !layer.geojson) {
+        // If it's a simple layer with just an ID (no opacity or other properties), return the normalized ID
+        if (layer.id && Object.keys(layer).filter(k => !k.startsWith('_')).length === 1) {
             return layerId;
         }
 
-        // If it's a layer with opacity, geojson, or other properties, create a clean object
+        // If it's a layer with opacity or other properties, create a clean object
         const cleanLayer = { id: layerId };
         Object.keys(layer).forEach(key => {
             if (key !== '_originalJson' && key !== '_normalizedId' &&
                 key !== '_sourceAtlas' && key !== '_prefixedId' &&
-                key !== 'id' && key !== 'initiallyChecked' && key !== 'tags' &&
-                key !== 'type' && key !== 'title' && key !== 'description' &&
-                key !== 'headerImage' && key !== 'attribution' && key !== 'style') {
+                key !== 'id' && key !== 'initiallyChecked') {
                 cleanLayer[key] = layer[key];
             }
         });
 
-        // If it's just an ID (no additional properties), return it as string
+        // If it's just an ID, return it as string
         if (Object.keys(cleanLayer).length === 1) {
             return layerId;
         }
 
-        // If it's a complex layer with geojson or other properties, return minified JSON
-        return JSON.stringify(cleanLayer);
+        // If it's a complex layer, return minified JSON
+        const minified = JSON.stringify(cleanLayer);
+        return minified;
     }
 
     /**
@@ -194,18 +156,7 @@ export class URLManager {
 
         // Iterate through all groups in the layer control
         this.mapLayerControl._state.groups.forEach((group, groupIndex) => {
-            // Special case: skip selection layer if it has no features
-            if (group.id === 'selection' && (!group.geojson || !group.geojson.features || group.geojson.features.length === 0)) {
-                return;
-            }
-
-            // Special case: always include selection layer if it has features
-            const isSelectionWithFeatures = group.id === 'selection' &&
-                group.geojson &&
-                group.geojson.features &&
-                group.geojson.features.length > 0;
-
-            if (this.isGroupActive(groupIndex) || isSelectionWithFeatures) {
+            if (this.isGroupActive(groupIndex)) {
                 // Use the original layer configuration if it exists
                 if (group._originalJson) {
                     // If this is a custom layer from URL, preserve the original JSON string
@@ -234,10 +185,6 @@ export class URLManager {
                     // Include opacity if it exists and is different from default (1)
                     if (group.opacity !== undefined && group.opacity !== 1) {
                         layerObj.opacity = group.opacity;
-                    }
-                    // Include geojson if it exists and has features
-                    if (group.geojson && group.geojson.features && group.geojson.features.length > 0) {
-                        layerObj.geojson = group.geojson;
                     }
                     activeLayers.push(layerObj);
                 } else if (group.layers && group.layers.length > 0) {
@@ -288,20 +235,10 @@ export class URLManager {
         const crossAtlasLayers = this.getActiveCrossAtlasLayers();
         activeLayers.push(...crossAtlasLayers);
 
-        // Enrich layers with full config to check basemap tags
-        const enrichedLayers = activeLayers.map(layer => {
-            const layerConfig = this.mapLayerControl._state.groups.find(g =>
-                g.id === layer.id || g._prefixedId === layer.id
-            );
-            return {
-                ...layer,
-                tags: layerConfig?.tags || layer.tags
-            };
-        });
+        // Reverse the order so newest layers appear first in the URL
+        activeLayers.reverse();
 
-        // Use centralized ordering logic: map order → URL order
-        // This handles: reversal + basemap grouping (overlays first, basemaps at end)
-        return LayerOrderManager.mapOrderToUrlOrder(enrichedLayers);
+        return activeLayers;
     }
 
     /**
@@ -417,9 +354,6 @@ export class URLManager {
         let fogParam = null;
         let wireframeParam = null;
         let terrainSourceParam = null;
-        let fovParam = null;
-        let soundParam = null;
-        let selectedParam = null;
 
         // Handle layers parameter
         if (options.updateLayers !== false) {
@@ -566,49 +500,6 @@ export class URLManager {
             }
         }
 
-        // Handle fov parameter
-        if (options.fov !== undefined) {
-            const currentFovParam = urlParams.get('fov');
-            // Only set if not default (0.643 is default)
-            if (options.fov !== null && Math.abs(options.fov - 0.643) > 0.001) {
-                fovParam = options.fov.toFixed(3);
-                if (currentFovParam !== fovParam) {
-                    hasChanges = true;
-                }
-            } else {
-                // Remove parameter when using default FOV
-                if (currentFovParam !== null) {
-                    hasChanges = true;
-                }
-            }
-        }
-
-        // Handle sound parameter
-        if (options.sound !== undefined) {
-            const currentSoundParam = urlParams.get('sound');
-            if (options.sound) {
-                soundParam = 'true';
-                if (currentSoundParam !== 'true') {
-                    hasChanges = true;
-                }
-            } else {
-                if (currentSoundParam !== null) {
-                    hasChanges = true;
-                }
-            }
-        }
-
-        // Handle selected features parameter
-        if (options.updateSelections && this.stateManager) {
-            const newSelectedParam = this.serializeSelectionsForURL();
-            const currentSelectedParam = urlParams.get('selected');
-
-            if (newSelectedParam !== currentSelectedParam) {
-                selectedParam = newSelectedParam;
-                hasChanges = true;
-            }
-        }
-
         // Update URL if there are changes
         if (hasChanges) {
             // Create a pretty, readable URL without URL encoding
@@ -626,9 +517,6 @@ export class URLManager {
             otherParams.delete('fog');
             otherParams.delete('wireframe');
             otherParams.delete('terrainSource');
-            otherParams.delete('fov');
-            otherParams.delete('sound');
-            otherParams.delete('selected');
 
             // Add other parameters first (these will be URL-encoded by URLSearchParams)
             const otherParamsString = otherParams.toString();
@@ -697,29 +585,6 @@ export class URLManager {
                 params.push('terrainSource=' + currentTerrainSource);
             }
 
-            // Add fov parameter (either new or preserved from current URL)
-            const currentFov = fovParam || (options.fov === undefined ? urlParams.get('fov') : null);
-            if (currentFov && Math.abs(parseFloat(currentFov) - 0.643) > 0.001) {
-                params.push('fov=' + currentFov);
-            }
-
-            // Add sound parameter (either new or preserved from current URL)
-            const currentSound = soundParam || (options.sound === undefined ? urlParams.get('sound') : null);
-            if (currentSound === 'true') {
-                params.push('sound=true');
-            }
-
-            // Add selected features parameter
-            if (selectedParam !== null && selectedParam !== '') {
-                params.push('selected=' + selectedParam);
-            } else if (options.updateSelections !== true) {
-                // If we're not explicitly updating selections, preserve existing parameter
-                const currentSelectedParam = urlParams.get('selected');
-                if (currentSelectedParam) {
-                    params.push('selected=' + currentSelectedParam);
-                }
-            }
-
             // Build the final pretty URL
             let newUrl = baseUrl;
             if (params.length > 0) {
@@ -748,68 +613,11 @@ export class URLManager {
             return '';
         }
 
-        return layers.map(layer => this.layerToURL(layer)).join(',');
-    }
+        const serialized = layers.map(layer => {
+            return this.layerToURL(layer);
+        }).join(',');
 
-    serializeSelectionsForURL() {
-        if (!this.stateManager) {
-            return '';
-        }
-
-        const selectionsByLayer = new Map();
-
-        this.stateManager._selectedFeatures.forEach(compositeKey => {
-            const featureState = this.stateManager._featureStates.get(compositeKey);
-            if (featureState) {
-                const layerId = featureState.layerId;
-                const featureId = this.stateManager._getFeatureId(featureState.feature);
-                const rawFeatureId = this.stateManager._extractRawFeatureId(featureId);
-
-                if (!selectionsByLayer.has(layerId)) {
-                    selectionsByLayer.set(layerId, []);
-                }
-                selectionsByLayer.get(layerId).push(rawFeatureId);
-            }
-        });
-
-        if (selectionsByLayer.size === 0) {
-            return '';
-        }
-
-        const segments = [];
-        selectionsByLayer.forEach((featureIds, layerId) => {
-            const featureIdsStr = featureIds.join(',');
-            segments.push(`${layerId}:${featureIdsStr}`);
-        });
-
-        return segments.join(';');
-    }
-
-    parseSelectionsFromURL(selectedParam) {
-        if (!selectedParam) {
-            return new Map();
-        }
-
-        const selectionsByLayer = new Map();
-
-        const layerSegments = selectedParam.split(';');
-        layerSegments.forEach(segment => {
-            const colonIndex = segment.indexOf(':');
-            if (colonIndex === -1) {
-                console.warn(`Invalid selection segment: ${segment}`);
-                return;
-            }
-
-            const layerId = segment.substring(0, colonIndex);
-            const featureIdsStr = segment.substring(colonIndex + 1);
-            const featureIds = featureIdsStr.split(',').map(id => id.trim()).filter(id => id);
-
-            if (layerId && featureIds.length > 0) {
-                selectionsByLayer.set(layerId, featureIds);
-            }
-        });
-
-        return selectionsByLayer;
+        return serialized;
     }
 
     /**
@@ -832,15 +640,14 @@ export class URLManager {
         const fogParam = urlParams.get('fog');
         const wireframeParam = urlParams.get('wireframe');
         const terrainSourceParam = urlParams.get('terrainSource');
-        const fovParam = urlParams.get('fov');
-        const selectedParam = urlParams.get('selected');
 
         // Auto-add terrain parameter if not present
         if (!terrainParam) {
+            console.log('[URL API] No terrain parameter found, auto-adding default');
             this.autoAddTerrainParameter();
         }
 
-        if (!layersParam && !geolocateParam && !searchParam && !terrainParam && !animateParam && !fogParam && !wireframeParam && !terrainSourceParam && !fovParam && !selectedParam) {
+        if (!layersParam && !geolocateParam && !searchParam && !terrainParam && !animateParam && !fogParam && !wireframeParam && !terrainSourceParam) {
             return false;
         }
 
@@ -927,39 +734,6 @@ export class URLManager {
                 window.terrain3DControl.setTerrainSource(terrainSourceParam);
             }
 
-            // Handle fov parameter
-            if (fovParam && window.terrain3DControl) {
-                applied = true;
-                const fov = parseFloat(fovParam);
-                if (!isNaN(fov) && fov >= 0.1 && fov <= 1.5) {
-                    window.terrain3DControl.setFov(fov);
-                }
-            }
-
-            // Handle selected features parameter
-            if (selectedParam && this.stateManager) {
-                applied = true;
-
-                // First, try to restore markers from selection layer GeoJSON if available
-                let markersRestored = false;
-                if (window.featureControl?._markerManager) {
-                    try {
-                        markersRestored = await window.featureControl._markerManager.restoreMarkersFromSelectionLayer();
-                        if (markersRestored) {
-                            console.log('[URL API] Successfully restored markers from selection layer');
-                        }
-                    } catch (error) {
-                        console.warn('[URL API] Error restoring markers from selection layer:', error);
-                    }
-                }
-
-                // If markers were not restored from selection layer, fall back to selected parameter
-                if (!markersRestored) {
-                    console.log('[URL API] Restoring selections from selected parameter');
-                    await this.applySelectionsFromURL(selectedParam);
-                }
-            }
-
         } catch (error) {
             console.error('🔗 Error applying URL parameters:', error);
         } finally {
@@ -967,239 +741,6 @@ export class URLManager {
         }
 
         return applied;
-    }
-
-    async applySelectionsFromURL(selectedParam) {
-        if (!this.stateManager) {
-            console.warn('[URL API] State manager not available for applying selections');
-            return;
-        }
-
-        const selectionsByLayer = this.parseSelectionsFromURL(selectedParam);
-        if (selectionsByLayer.size === 0) {
-            return;
-        }
-
-        const layersReady = await this.waitForLayersReady(Array.from(selectionsByLayer.keys()));
-
-        if (!layersReady) {
-            console.warn('[URL API] Not all layers ready, attempting selection anyway');
-        }
-
-        await this.waitForMapIdle();
-
-        const sources = [];
-        selectionsByLayer.forEach((featureIds, layerId) => {
-            const layerConfig = this.stateManager.getLayerConfig(layerId);
-            if (layerConfig) {
-                const sourceId = layerConfig.source || `${layerConfig.type}-${layerId}`;
-                if (!sources.includes(sourceId)) {
-                    sources.push(sourceId);
-                }
-            }
-        });
-
-        await this.waitForSourceData(sources);
-
-        const allSelectedFeatures = [];
-
-        for (const [layerId, featureIds] of selectionsByLayer.entries()) {
-            if (!this.stateManager.isLayerRegistered(layerId)) {
-                console.warn(`[URL API] Layer ${layerId} not registered, skipping selections`);
-                continue;
-            }
-
-            const layerConfig = this.stateManager.getLayerConfig(layerId);
-            if (!layerConfig) {
-                console.warn(`[URL API] Layer config not found for ${layerId}`);
-                continue;
-            }
-
-            for (const rawFeatureId of featureIds) {
-                const selectedFeature = await this.selectFeatureFromURL(layerId, rawFeatureId, layerConfig);
-                if (selectedFeature) {
-                    allSelectedFeatures.push(selectedFeature);
-                }
-            }
-        }
-
-        if (allSelectedFeatures.length > 0) {
-            this.stateManager._updateLineSortKeys();
-
-            // Execute inspection handlers and emit events for each selected feature
-            for (const selectedFeature of allSelectedFeatures) {
-                const { feature, featureId, layerId, lngLat } = selectedFeature;
-
-                // Execute inspection handler if configured
-                await this.stateManager._executeInspectionHandler(feature, layerId, lngLat);
-
-                // Emit individual feature-click event for each feature
-                // This ensures the iframe receives the feature data
-                this.stateManager._emitStateChange('feature-click', {
-                    feature,
-                    featureId,
-                    layerId,
-                    lngLat,
-                    fromURL: true
-                });
-            }
-
-            this.stateManager._emitStateChange('feature-click-multiple', {
-                selectedFeatures: allSelectedFeatures,
-                clearedFeatures: [],
-                fromURL: true
-            });
-        }
-    }
-
-    async waitForMapIdle(timeout = 3000) {
-        return new Promise((resolve) => {
-            if (this.map.loaded() && this.map.areTilesLoaded()) {
-                resolve();
-                return;
-            }
-
-            const timeoutId = setTimeout(() => {
-                resolve();
-            }, timeout);
-
-            const onIdle = () => {
-                clearTimeout(timeoutId);
-                this.map.off('idle', onIdle);
-                resolve();
-            };
-
-            this.map.once('idle', onIdle);
-        });
-    }
-
-    async waitForSourceData(sourceIds, timeout = 5000) {
-        return new Promise((resolve) => {
-            const loadedSources = new Set();
-            const startTime = Date.now();
-
-            const checkSources = () => {
-                for (const sourceId of sourceIds) {
-                    if (loadedSources.has(sourceId)) continue;
-
-                    const source = this.map.getSource(sourceId);
-                    if (!source) continue;
-
-                    if (source.type === 'geojson' && source._data) {
-                        loadedSources.add(sourceId);
-                    } else if (source.type === 'vector' && this.map.isSourceLoaded(sourceId)) {
-                        loadedSources.add(sourceId);
-                    } else if (source.type === 'raster' && this.map.isSourceLoaded(sourceId)) {
-                        loadedSources.add(sourceId);
-                    }
-                }
-
-                if (loadedSources.size === sourceIds.length) {
-                    resolve();
-                } else if (Date.now() - startTime > timeout) {
-                    const notLoaded = sourceIds.filter(id => !loadedSources.has(id));
-                    console.warn(`[URL API] Timeout waiting for sources: ${notLoaded.join(', ')}`);
-                    resolve();
-                } else {
-                    requestAnimationFrame(checkSources);
-                }
-            };
-
-            checkSources();
-        });
-    }
-
-    async waitForLayersReady(layerIds, timeout = 10000) {
-        const startTime = Date.now();
-        const checkInterval = 200;
-
-        return new Promise((resolve) => {
-            const checkLayers = () => {
-                if (!this.stateManager) {
-                    console.warn('[URL API] State manager not available');
-                    resolve(false);
-                    return;
-                }
-
-                const readyLayers = layerIds.filter(layerId =>
-                    this.stateManager.isLayerRegistered(layerId)
-                );
-
-                const allReady = readyLayers.length === layerIds.length;
-
-                if (allReady) {
-                    resolve(true);
-                } else if (Date.now() - startTime > timeout) {
-                    const notReady = layerIds.filter(id => !readyLayers.includes(id));
-                    console.warn(`[URL API] Timeout waiting for layers: ${notReady.join(', ')}`);
-                    resolve(false);
-                } else {
-                    setTimeout(checkLayers, checkInterval);
-                }
-            };
-
-            checkLayers();
-        });
-    }
-
-    async selectFeatureFromURL(layerId, rawFeatureId, layerConfig, retries = 3, retryDelay = 500) {
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            try {
-                const features = this.map.querySourceFeatures(
-                    layerConfig.source || `${layerConfig.type}-${layerId}`,
-                    {
-                        sourceLayer: layerConfig.sourceLayer
-                    }
-                );
-
-                const matchingFeature = features.find(f => {
-                    if (f.id !== undefined && f.id !== null && f.id.toString() === rawFeatureId.toString()) {
-                        return true;
-                    }
-                    if (f.properties?.id !== undefined && f.properties?.id !== null && f.properties.id.toString() === rawFeatureId.toString()) {
-                        return true;
-                    }
-                    if (f.properties?.fid !== undefined && f.properties?.fid !== null && f.properties.fid.toString() === rawFeatureId.toString()) {
-                        return true;
-                    }
-                    return false;
-                });
-
-                if (matchingFeature) {
-                    const featureId = this.stateManager._getFeatureId(matchingFeature);
-                    const compositeKey = this.stateManager._getCompositeKey(layerId, featureId);
-
-                    this.stateManager._updateFeatureState(compositeKey, {
-                        feature: matchingFeature,
-                        layerId,
-                        isSelected: true,
-                        timestamp: Date.now()
-                    });
-
-                    this.stateManager._selectedFeatures.add(compositeKey);
-                    this.stateManager._setMapboxFeatureState(featureId, layerId, { selected: true });
-
-                    return {
-                        featureId,
-                        layerId,
-                        feature: matchingFeature,
-                        lngLat: null
-                    };
-                }
-
-                if (attempt < retries) {
-                    await new Promise(resolve => setTimeout(resolve, retryDelay));
-                }
-            } catch (error) {
-                console.warn(`[URL API] Error selecting feature ${rawFeatureId} from layer ${layerId} (attempt ${attempt + 1}/${retries + 1}):`, error);
-                if (attempt < retries) {
-                    await new Promise(resolve => setTimeout(resolve, retryDelay));
-                }
-            }
-        }
-
-        console.warn(`[URL API] Feature ${rawFeatureId} not found in layer ${layerId} after ${retries + 1} attempts`);
-        return null;
     }
 
     /**
@@ -1400,11 +941,14 @@ export class URLManager {
             console.debug('Could not get terrain exaggeration from style, using default:', defaultExaggeration);
         }
 
+        console.log('[URL API] Auto-adding terrain parameter with exaggeration:', defaultExaggeration);
+
         // Add terrain parameter to URL
         this.updateURL({ terrain: defaultExaggeration });
 
         // Also initialize the 3D control if available
         if (window.terrain3DControl) {
+            console.log('[URL API] Initializing 3D control with exaggeration:', defaultExaggeration);
             window.terrain3DControl.setExaggeration(defaultExaggeration);
             window.terrain3DControl.setEnabled(true);
         }
@@ -1414,35 +958,35 @@ export class URLManager {
      * Update terrain parameter in URL
      */
     updateTerrainParam(exaggeration) {
-        this.updateURL({ terrain: exaggeration, updateLayers: false });
+        this.updateURL({ terrain: exaggeration });
     }
 
     /**
      * Update animate parameter in URL
      */
     updateAnimateParam(animate) {
-        this.updateURL({ animate: animate, updateLayers: false });
+        this.updateURL({ animate: animate });
     }
 
     /**
      * Update fog parameter in URL
      */
     updateFogParam(enableFog) {
-        this.updateURL({ fog: enableFog, updateLayers: false });
+        this.updateURL({ fog: enableFog });
     }
 
     /**
      * Update wireframe parameter in URL
      */
     updateWireframeParam(showWireframe) {
-        this.updateURL({ wireframe: showWireframe, updateLayers: false });
+        this.updateURL({ wireframe: showWireframe });
     }
 
     /**
      * Update terrain source parameter in URL
      */
     updateTerrainSourceParam(terrainSource) {
-        this.updateURL({ terrainSource: terrainSource, updateLayers: false });
+        this.updateURL({ terrainSource: terrainSource });
     }
 
     /**
@@ -1450,19 +994,5 @@ export class URLManager {
      */
     updateSearchParam(query) {
         this.updateURL({ search: query || '', updateLayers: false });
-    }
-
-    /**
-     * Update fov parameter in URL
-     */
-    updateFovParam(fov) {
-        this.updateURL({ fov: fov, updateLayers: false });
-    }
-
-    /**
-     * Update sound parameter in URL
-     */
-    updateSoundParam(visualizeSound) {
-        this.updateURL({ sound: visualizeSound, updateLayers: false });
     }
 }

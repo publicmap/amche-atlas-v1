@@ -40,30 +40,15 @@ module.exports = {
                         return content;
                     }
                 },
+                { from: 'data', to: 'data' },
                 { from: 'docs', to: 'docs' },
                 { from: 'assets', to: 'assets' },
                 { from: 'config', to: 'config' },
-                {
-                    from: 'js',
-                    to: 'js',
-                    globOptions: {
-                        ignore: ['**/index.js', '**/tests/**']
-                    }
-                },
-                { from: 'map-browser.html', to: 'map-browser.html' },
-                { from: 'map-creator.html', to: 'map-creator.html' },
-                { from: 'map-export.html', to: 'map-export.html' },
-                { from: 'map-inspector.html', to: 'map-inspector.html' },
-                { from: 'map-information.html', to: 'map-information.html' },
-                { from: 'map-export-layout.html', to: 'map-export-layout.html' },
                 { from: 'offline.html', to: 'offline.html' },
                 { from: 'privacy.html', to: 'privacy.html' },
                 { from: 'manifest.json', to: 'manifest.json' },
-                { from: 'service-worker.js', to: 'service-worker.js' },
-                { from: '.nojekyll', to: '.nojekyll' },
                 { from: 'bus', to: 'bus' },
                 { from: 'game', to: 'game' },
-                { from: 'warper', to: 'warper' },
                 { from: 'sound', to: 'sound' },
                 { from: 'pages', to: 'pages' },
             ],

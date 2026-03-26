@@ -1,16 +1,10 @@
 {
   "name": "Mapbox",
-  "areaOfInterest": "Global",
-  "description": "Global vector basemaps from Mapbox.com",
+  "areaOfInterest": "Goa, India",
   "version": "0.1.0",
   "url": "https://github.com/publicmap/amche-goa/blob/main/config/goa.atlas.json",
   "color": "#2563eb",
-  "bbox": [
-    -180,
-    -90,
-    180,
-    90
-  ],
+  "bbox": [-180, -90, 180, 90],
   "map": {
     "center": [
       73.8,
@@ -21,9 +15,6 @@
   "layers": [
     {
       "id": "traffic",
-      "tags": [
-        "traffic"
-      ],
       "title": "Traffic",
       "description": "Live traffic map via <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-traffic-v1/' target='_blank'>Mapbox Traffic</a> vector tiles. Updated every 10 minutes.",
       "type": "style",
@@ -36,46 +27,7 @@
       ]
     },
     {
-      "id": "countries",
-      "tags": [
-        "boundaries",
-        "basemap"
-      ],
-      "title": "Mapbox Country Boundaries",
-      "description": "Admin-0 level boundaries from Mapbox. See <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-countries-v1/' target='_blank'>Mapbox Countries v1 Docs</a> for details.",
-      "type": "vector",
-      "attribution": "<a href='https://www.mapbox.com/boundaries'>© Mapbox Boundaries</a>",
-      "url": "mapbox://mapbox.country-boundaries-v1",
-      "sourceLayer": "country_boundaries",
-      "filter": [
-        "match",
-        [
-          "get",
-          "worldview"
-        ],
-        [
-          "all",
-          "IN"
-        ],
-        true,
-        false
-      ],
-      "style": {
-        "fill-color": "white"
-      },
-      "inspect": {
-        "id": "iso_3166_1",
-        "title": "Name",
-        "label": "name_en"
-      },
-      "initiallyChecked": true
-    },
-    {
-      "initiallyChecked": true,
       "id": "streets",
-      "tags": [
-        "streets"
-      ],
       "title": "Mapbox Street Map",
       "description": "Detailed street level map data layers sourced from <a href='https://www.openstreetmap.org/#map=11/15.4054/73.9280' target='_blank'>OpenStreetMap contributors</a> and other data sources via <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-streets-v8/' target='_blank'>Mapbox Streets</a> vector tiles.",
       "type": "style",
@@ -150,52 +102,44 @@
     },
     {
       "initiallyChecked": true,
-      "id": "terrain-v2",
-      "tags": [
-        "terrain"
-      ],
-      "type": "vector",
-      "title": "Mapbox Terrain Contours",
-      "sourceLayer": "contour",
-      "description": "Mapbox Terrain Contours. See <a href='https://docs.mapbox.com/data/tilesets/reference/mapbox-terrain-v2/'>Mapbox Terrain And Contours</a> for details.",
-      "attribution": "<a href='https://www.mapbox.com/about/maps' rel='noopener nofollow'>© Mapbox</a> <a href='https://www.maxar.com/' rel='noopener nofollow'>© Maxar</a>",
-      "url": "mapbox://mapbox.mapbox-terrain-v2",
-      "style": {
-        "symbol-placement": "line",
-        "text-field": [
-          "concat",
-          [
-            "get",
-            "ele"
-          ],
-          "m"
-        ],
-        "line-color": "red",
-        "text-halo-color": "red",
-        "text-halo-width": 1,
-        "text-size": 8
-      },
-      "inspect": {
-        "id": "ele",
-        "title": "Elevation",
-        "label": "ele"
-      }
-    },
-    {
-      "initiallyChecked": true,
       "id": "satellite",
       "tags": [
-        "basemap",
-        "satellite"
+        "satellite",
+        "basemap"
       ],
-      "type": "tms",
+      "type": "raster-style-layer",
       "title": "Satellite Imagery",
       "description": "Satellite imagery from Mapbox. See <a href='https://docs.mapbox.com/help/dive-deeper/imagery/'>Mapbox Satellite Imagery</a> for details.",
       "headerImage": "assets/map-layers/mapbox/map-layer-satellite.png",
       "attribution": "<a href='https://www.mapbox.com/about/maps' rel='noopener nofollow'>© Mapbox</a> <a href='https://www.maxar.com/' rel='noopener nofollow'>© Maxar</a>",
-      "url": "mapbox://mapbox.satellite",
-      "maxzoom": 22,
+      "styleLayer": "satellite",
       "style": {
+        "raster-brightness-min": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          8,
+          0.5,
+          16,
+          0.3
+        ],
+        "raster-brightness-max": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          8,
+          0.7,
+          16,
+          0.8
+        ],
         "raster-opacity": 1
       }
     }

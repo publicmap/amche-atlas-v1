@@ -9,25 +9,13 @@ test('spider test: verify all internal links and check for console errors', asyn
     // Listen for console errors
     page.on('console', msg => {
         if (msg.type() === 'error') {
-            const errorText = msg.text();
-            // Ignore external API fetch errors (Mapbox, etc.)
-            if (errorText.includes('Failed to fetch') &&
-                (errorText.includes('api.mapbox.com') || errorText.includes('mapbox-gl'))) {
-                return;
-            }
-            errors.push(`Console error on ${page.url()}: ${errorText}`);
+            errors.push(`Console error on ${page.url()}: ${msg.text()}`);
         }
     });
 
     // Listen for page errors (e.g. unhandled exceptions)
     page.on('pageerror', exception => {
-        const errorMsg = exception.message;
-        // Ignore external API fetch errors
-        if (errorMsg.includes('Failed to fetch') &&
-            (errorMsg.includes('api.mapbox.com') || errorMsg.includes('mapbox-gl'))) {
-            return;
-        }
-        errors.push(`Page error on ${page.url()}: ${errorMsg}`);
+        errors.push(`Page error on ${page.url()}: ${exception.message}`);
     });
 
     while (queue.length > 0) {

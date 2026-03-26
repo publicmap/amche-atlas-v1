@@ -28,7 +28,7 @@
               ],
               false
             ],
-            "rgba(255, 255, 255, 0)",
+            "rgba(255, 255, 0, 0.2)",
             [
               "boolean",
               [
@@ -37,7 +37,7 @@
               ],
               false
             ],
-            "rgba(255, 255, 0, 0.1)",
+            "rgba(255, 255, 0, 0.5)",
             "white"
           ],
           "fill-opacity": [
@@ -48,7 +48,7 @@
             [
               "zoom"
             ],
-            12,
+            15,
             [
               "case",
               [
@@ -82,7 +82,7 @@
                 ],
                 false
               ],
-              0,
+              0.3,
               [
                 "boolean",
                 [
@@ -91,8 +91,8 @@
                 ],
                 false
               ],
-              0.1,
-              0.4
+              0.2,
+              0.2
             ]
           ]
         },
@@ -103,21 +103,21 @@
               "boolean",
               [
                 "feature-state",
+                "selected"
+              ],
+              false
+            ],
+            "black",
+            [
+              "boolean",
+              [
+                "feature-state",
                 "hover"
               ],
               false
             ],
             "yellow",
-            [
-              "boolean",
-              [
-                "feature-state",
-                "selected"
-              ],
-              false
-            ],
-            "red",
-            "black"
+            "grey"
           ],
           "line-width": [
             "interpolate",
@@ -133,26 +133,12 @@
               [
                 "boolean",
                 [
-                  "boolean",
-                  [
-                    "feature-state",
-                    "hover"
-                  ],
-                  false
-                ],
-                2,
-                [
                   "feature-state",
                   "selected"
                 ],
                 false
               ],
               2,
-              0.5
-            ],
-            18,
-            [
-              "case",
               [
                 "boolean",
                 [
@@ -161,7 +147,12 @@
                 ],
                 false
               ],
-              4,
+              1.5,
+              0.5
+            ],
+            16,
+            [
+              "case",
               [
                 "boolean",
                 [
@@ -171,6 +162,15 @@
                 false
               ],
               4,
+              [
+                "boolean",
+                [
+                  "feature-state",
+                  "hover"
+                ],
+                false
+              ],
+              3,
               1
             ]
           ],
@@ -195,7 +195,7 @@
               ],
               false
             ],
-            "black",
+            "white",
             [
               "boolean",
               [
@@ -213,20 +213,20 @@
               "boolean",
               [
                 "feature-state",
+                "selected"
+              ],
+              false
+            ],
+            "black",
+            [
+              "boolean",
+              [
+                "feature-state",
                 "hover"
               ],
               false
             ],
             "yellow",
-            [
-              "boolean",
-              [
-                "feature-state",
-                "selected"
-              ],
-              false
-            ],
-            "red",
             "grey"
           ],
           "text-halo-width": 2,
@@ -237,7 +237,7 @@
               "boolean",
               [
                 "feature-state",
-                "hover"
+                "selected"
               ],
               false
             ],
@@ -246,11 +246,11 @@
               "boolean",
               [
                 "feature-state",
-                "selected"
+                "hover"
               ],
               false
             ],
-            1,
+            0.95,
             0.9
           ],
           "text-anchor": "bottom",
@@ -307,10 +307,10 @@
           6,
           0.98,
           14,
-          0.95,
-          18,
           0.9,
-          22,
+          18,
+          0.8,
+          19,
           0.2
         ]
       }

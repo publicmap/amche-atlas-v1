@@ -43,8 +43,8 @@
 import {LayerSettingsModal} from './layer-settings-modal.js';
 import {MapboxAPI} from './mapbox-api.js';
 import {DataUtils} from './map-utils.js';
+import {LayerCreatorUI} from './layer-creator-ui.js';
 import {MapWarperAPI} from './mapwarper-url-api.js';
-import {LayerOrderManager} from './layer-order-manager.js';
 
 export class MapLayerControl {
     constructor(options) {
@@ -85,7 +85,6 @@ export class MapLayerControl {
     async renderToContainer(container, map) {
         this._container = $(container)[0];
         this._map = map;
-        this._initialized = false;
 
         // Make sure default styles are loaded BEFORE creating MapboxAPI
         await this._ensureDefaultStylesLoaded();
@@ -108,26 +107,24 @@ export class MapLayerControl {
         // Add drawer focus management to prevent aria-hidden accessibility issues
         this._setupDrawerFocusManagement();
 
-        const initOnce = () => {
-            if (this._initialized) return;
-            this._initialized = true;
-            this._initializeControl(container);
-            this._initializeFilterControls();
-        };
-
         // Initialize the control UI
         if (this._map.isStyleLoaded()) {
-            initOnce();
+            this._initializeControl(container);
+            this._initializeFilterControls();
         } else {
+            // Add a fallback timeout in case style.load event doesn't fire
+            // This can happen when map.isStyleLoaded() returns false even though the style is loaded
             const fallbackTimeout = setTimeout(() => {
                 if (this._map.getStyle()) {
-                    initOnce();
+                    this._initializeControl(container);
+                    this._initializeFilterControls();
                 }
             }, 1000);
 
-            this._map.once('style.load', () => {
+            this._map.on('style.load', () => {
                 clearTimeout(fallbackTimeout);
-                initOnce();
+                this._initializeControl(container);
+                this._initializeFilterControls();
             });
         }
 
@@ -158,8 +155,12 @@ export class MapLayerControl {
             }
         });
 
+        console.log(`[LayerControl] Adding ${allLayers.length} layers from registry to the ${this._state.groups.length} current atlas layers`);
+
         // Add all layers to state
         this._state.groups = [...this._state.groups, ...allLayers];
+
+        console.log(`[LayerControl] Total layers in state: ${this._state.groups.length}`);
     }
 
     /**
@@ -246,6 +247,8 @@ export class MapLayerControl {
      * Initialize the main control UI
      */
     _initializeControl(container) {
+        console.log(`[LayerControl] Rendering ${this._state.groups.length} layers to UI`);
+
         // Add current atlas layers
         this._state.groups.forEach((group, groupIndex) => {
             $(container).append(this._createGroupHeader(group, groupIndex));
@@ -257,51 +260,41 @@ export class MapLayerControl {
         if (!this._initialized) {
             this._initializeWithAnimation();
         }
+
+        // Log actual rendered count
+        const $container = $(container);
+        const renderedCount = $container.find('.group-header').length;
+        console.log(`[LayerControl] Rendered ${renderedCount} layer UI elements`);
     }
 
     /**
      * Initialize all layers to their proper visibility states
-     * Layers in _state.groups are in visual order (first = top visually)
-     * We need to add them to the map in rendering order (reversed, basemaps first)
      */
     _initializeAllLayers() {
-        // Collect initially checked layers with their indices
-        const initiallyCheckedLayers = [];
         this._state.groups.forEach((group, groupIndex) => {
+            // Initialize the layer state using MapboxAPI
+            // For all layers, explicitly set their initial visibility state
             if (group.initiallyChecked) {
-                initiallyCheckedLayers.push({ group, groupIndex });
-            }
-        });
-
-        // Convert to map rendering order using centralized logic
-        const layersOnly = initiallyCheckedLayers.map(item => item.group);
-        const mapOrderLayers = LayerOrderManager.urlOrderToMapOrder(layersOnly);
-
-        // Create a map of layer id to group index for quick lookup
-        const layerIdToIndex = new Map();
-        initiallyCheckedLayers.forEach(item => {
-            layerIdToIndex.set(item.group.id, item.groupIndex);
-        });
-
-        // Add layers in map rendering order (basemaps first, reversed within groups)
-        mapOrderLayers.forEach(layer => {
-            const groupIndex = layerIdToIndex.get(layer.id);
-            if (groupIndex !== undefined) {
-                this._toggleLayerGroup(groupIndex, true);
-            }
-        });
-
-        // Handle non-initially-checked layers
-        this._state.groups.forEach((group, groupIndex) => {
-            if (!group.initiallyChecked) {
+                requestAnimationFrame(() => {
+                    this._toggleLayerGroup(groupIndex, true);
+                });
+            } else {
+                // Explicitly hide layers that should not be visible initially
+                // This is especially important for style layers which are visible by default
+                // For style layers, we need to ensure the map style is loaded before hiding
                 const shouldDelay = group.type === 'style' && !this._map.getStyle();
 
                 if (shouldDelay) {
+                    // Wait for style to load before hiding style layers
                     this._map.once('style.load', () => {
-                        this._toggleLayerGroup(groupIndex, false);
+                        requestAnimationFrame(() => {
+                            this._toggleLayerGroup(groupIndex, false);
+                        });
                     });
                 } else {
-                    this._toggleLayerGroup(groupIndex, false);
+                    requestAnimationFrame(() => {
+                        this._toggleLayerGroup(groupIndex, false);
+                    });
                 }
             }
         });
@@ -476,41 +469,23 @@ export class MapLayerControl {
         }
 
         try {
-            // If type, _sourceAtlas, or tags are missing, try to resolve from the registry
-            if ((!group.type || !group._sourceAtlas || !group.tags) && group.id && window.layerRegistry) {
+            // If type is missing, try to resolve it from the registry
+            if (!group.type && group.id && window.layerRegistry) {
                 const resolvedLayer = window.layerRegistry.getLayer(group.id);
-                if (resolvedLayer) {
-                    const updates = {};
-                    if (!group.type && resolvedLayer.type) {
-                        updates.type = resolvedLayer.type;
-                    }
-                    if (!group._sourceAtlas && resolvedLayer._sourceAtlas) {
-                        updates._sourceAtlas = resolvedLayer._sourceAtlas;
-                    }
-                    if (!group.tags && resolvedLayer.tags) {
-                        updates.tags = resolvedLayer.tags;
-                    }
-                    // Merge other useful properties from registry
-                    if (resolvedLayer._prefixedId) updates._prefixedId = resolvedLayer._prefixedId;
-                    if (resolvedLayer._originalId) updates._originalId = resolvedLayer._originalId;
-
-                    if (Object.keys(updates).length > 0) {
-                        group = { ...group, ...updates };
-                        // Update the group in state so we don't have to resolve it again
-                        const stateGroupIndex = this._state.groups.findIndex(g => g.id === group.id);
-                        if (stateGroupIndex !== -1) {
-                            this._state.groups[stateGroupIndex] = group;
-                        }
-                        // Re-register with state manager to update the stored config
-                        if (this._stateManager && (updates._sourceAtlas || updates.tags)) {
-                            this._registerLayerWithStateManager(group);
-                        }
+                if (resolvedLayer && resolvedLayer.type) {
+                    console.warn(`[MapLayerControl] Resolved missing type for layer ${group.id} from registry: ${resolvedLayer.type}`);
+                    group = { ...group, type: resolvedLayer.type };
+                    // Update the group in state so we don't have to resolve it again
+                    const stateGroupIndex = this._state.groups.findIndex(g => g.id === group.id);
+                    if (stateGroupIndex !== -1) {
+                        this._state.groups[stateGroupIndex] = group;
                     }
                 }
             }
 
             // Validate that group has required properties
             if (!group.type) {
+                console.error(`[MapLayerControl] Cannot toggle layer ${group.id} - missing type property. This usually indicates a registry resolution issue.`);
                 return;
             }
 
@@ -526,7 +501,7 @@ export class MapLayerControl {
                 }
 
                 // For style layers, ensure sublayers are properly synchronized
-                if (group.type === 'style' && group.layers && this._container) {
+                if (group.type === 'style' && group.layers) {
                     // Find the group header element to sync sublayer toggles
                     const groupElement = this._container.querySelector(`[data-layer-id="${group.id}"]`);
                     if (groupElement) {
@@ -563,18 +538,6 @@ export class MapLayerControl {
                         console.warn('[LayerControl] Attribution control not available');
                     }
                 }, 50);
-
-                // Trigger layer-toggled event for layer removal
-                window.dispatchEvent(new CustomEvent('layer-toggled', {
-                    detail: { layerId: group.id, visible: false }
-                }));
-
-                // Update URL if urlManager is available
-                if (window.urlManager) {
-                    setTimeout(() => {
-                        window.urlManager.updateURL();
-                    }, 50);
-                }
             }
         } catch (error) {
             console.error(`Error toggling layer group ${group.id}:`, error);
@@ -600,71 +563,6 @@ export class MapLayerControl {
         }
 
         return null;
-    }
-
-    /**
-     * Add a layer directly from the registry without UI element
-     * Used for dynamically adding layers from imported atlases
-     */
-    async _addLayerDirectly(layerConfig) {
-        if (!this._mapboxAPI) {
-            throw new Error('MapboxAPI not initialized');
-        }
-
-        if (!layerConfig || !layerConfig.id) {
-            throw new Error('Invalid layer config');
-        }
-
-        try {
-            const layerWithChecked = {
-                ...layerConfig,
-                initiallyChecked: true
-            };
-
-            let insertPosition;
-            if (LayerOrderManager.isBasemap(layerWithChecked)) {
-                insertPosition = this._state.groups.findIndex(g => LayerOrderManager.isBasemap(g));
-                if (insertPosition === -1) {
-                    insertPosition = this._state.groups.length;
-                }
-            } else {
-                insertPosition = 0;
-            }
-
-            this._state.groups.splice(insertPosition, 0, layerWithChecked);
-
-            // Create the layer on the map
-            await this._mapboxAPI.createLayerGroup(layerConfig.id, layerConfig, { visible: true });
-
-            // Apply initial opacity if specified
-            if (layerConfig.opacity !== undefined && layerConfig.opacity !== 1) {
-                this._mapboxAPI.updateLayerOpacity(layerConfig.id, layerConfig, 1.0);
-            }
-
-            // Register with state manager if available
-            if (this._stateManager) {
-                this._registerLayerWithStateManager(layerConfig);
-            }
-
-            // Update attribution
-            if (window.attributionControl) {
-                window.attributionControl._updateAttribution();
-            }
-
-            // Trigger layer-toggled event
-            window.dispatchEvent(new CustomEvent('layer-toggled', {
-                detail: { layerId: layerConfig.id, visible: true }
-            }));
-
-            // Update URL if urlManager is available
-            if (window.urlManager) {
-                setTimeout(() => {
-                    window.urlManager.updateURL();
-                }, 50);
-            }
-        } catch (error) {
-            throw error;
-        }
     }
 
     /**
@@ -760,6 +658,7 @@ export class MapLayerControl {
             const resolvedLayer = window.layerRegistry.getLayer(group.id);
             if (resolvedLayer && resolvedLayer.title) {
                 title = resolvedLayer.title;
+                console.warn(`[MapLayerControl] Had to resolve title for ${group.id} from registry: ${title}`);
             }
         }
 
@@ -1074,11 +973,6 @@ export class MapLayerControl {
      * Initialize with animation
      */
     _initializeWithAnimation() {
-        if (!this._container) {
-            console.warn('[MapLayerControl] Container not initialized yet, skipping animation');
-            return;
-        }
-
         const allToggles = this._container.querySelectorAll('.group-header .toggle-switch input[type="checkbox"]');
         const groupHeaders = Array.from(allToggles).filter(toggle =>
             !toggle.closest('.layer-controls')
@@ -1161,43 +1055,6 @@ export class MapLayerControl {
     _registerLayerWithStateManager(layerConfig) {
         if (!this._stateManager) return;
 
-        // Resolve _sourceAtlas and tags from registry
-        if (layerConfig.id && window.layerRegistry) {
-            const resolvedLayer = window.layerRegistry.getLayer(layerConfig.id);
-
-            if (resolvedLayer) {
-                const updates = {};
-
-                if (!layerConfig._sourceAtlas && resolvedLayer._sourceAtlas) {
-                    updates._sourceAtlas = resolvedLayer._sourceAtlas;
-                    layerConfig._sourceAtlas = resolvedLayer._sourceAtlas;
-                }
-
-                // Always merge tags from registry (registry has cascaded tags from atlas)
-                if (resolvedLayer.tags) {
-                    if (!layerConfig.tags) {
-                        updates.tags = resolvedLayer.tags;
-                        layerConfig.tags = resolvedLayer.tags;
-                    } else if (Array.isArray(layerConfig.tags) && Array.isArray(resolvedLayer.tags)) {
-                        // Merge tags if both exist
-                        const mergedTags = [...new Set([...layerConfig.tags, ...resolvedLayer.tags])];
-                        if (JSON.stringify(layerConfig.tags) !== JSON.stringify(mergedTags)) {
-                            updates.tags = mergedTags;
-                            layerConfig.tags = mergedTags;
-                        }
-                    }
-                }
-
-                // Update in state groups array if present
-                if (Object.keys(updates).length > 0) {
-                    const groupIndex = this._state.groups.findIndex(g => g.id === layerConfig.id);
-                    if (groupIndex !== -1) {
-                        Object.assign(this._state.groups[groupIndex], updates);
-                    }
-                }
-            }
-        }
-
         // Register layer attribution if available
         // We do this BEFORE potentially skipping style layers for state management
         if (layerConfig.attribution && window.attributionControl) {
@@ -1223,6 +1080,7 @@ export class MapLayerControl {
 
         // Skip layers without a type - they can't be properly handled
         if (!layerConfig.type) {
+            console.warn(`[MapLayerControl] Skipping state manager registration for layer ${layerConfig.id} - missing type property`);
             return;
         }
 
@@ -1391,6 +1249,7 @@ export class MapLayerControl {
     _initializeFilterControls() {
         setTimeout(() => {
             const searchInput = document.getElementById('layer-search-input');
+            const newLayerBtn = document.getElementById('new-layer-btn');
             const atlasFilterBtn = document.getElementById('atlas-filter-select');
             const atlasFilterText = document.getElementById('atlas-filter-text');
             const atlasViewLocationBtn = document.getElementById('atlas-view-location-btn');
@@ -1411,6 +1270,13 @@ export class MapLayerControl {
                 });
                 searchInput.addEventListener('sl-clear', () => {
                     this._applyAllFilters();
+                });
+            }
+
+            // Initialize New Layer button
+            if (newLayerBtn) {
+                newLayerBtn.addEventListener('click', () => {
+                    LayerCreatorUI.openLayerCreatorDialog();
                 });
             }
 
@@ -1438,6 +1304,7 @@ export class MapLayerControl {
 
             if (filterActiveMaps) {
                 this._filterActiveMaps = !!filterActiveMaps.checked;
+                console.log('[Filter] filterActiveMaps initialized to:', this._filterActiveMaps);
 
                 filterActiveMaps.addEventListener('sl-change', (e) => {
                     this._filterActiveMaps = !!e.target.checked;
@@ -1459,6 +1326,7 @@ export class MapLayerControl {
 
             if (filterMapsInView) {
                 this._filterMapsInView = !!filterMapsInView.checked;
+                console.log('[Filter] filterMapsInView initialized to:', this._filterMapsInView);
 
                 filterMapsInView.addEventListener('sl-change', (e) => {
                     this._filterMapsInView = !!e.target.checked;
@@ -1814,6 +1682,8 @@ export class MapLayerControl {
                 }
             });
 
+            console.log(`[Filter] Result: ${visibleCount} visible, ${hiddenCount} hidden`);
+
             // Add cross-atlas search results dynamically (if not already in current atlas)
             if (isSearching && crossAtlasResults.length > 0) {
                 this._showCrossAtlasSearchResults(crossAtlasResults, currentLayerIds);
@@ -1824,6 +1694,7 @@ export class MapLayerControl {
                 this._hideCrossAtlasSearchResults();
             }
         } catch (error) {
+            console.error('[Filter] Error applying filters:', error);
         }
     }
 
@@ -2079,17 +1950,7 @@ export class MapLayerControl {
             layerWithPrefix._normalizedId = window.layerRegistry.normalizeLayerId(layerWithPrefix.id);
         }
 
-        let insertPosition;
-        if (LayerOrderManager.isBasemap(layerWithPrefix)) {
-            insertPosition = this._state.groups.findIndex(g => LayerOrderManager.isBasemap(g));
-            if (insertPosition === -1) {
-                insertPosition = this._state.groups.length;
-            }
-        } else {
-            insertPosition = 0;
-        }
-
-        this._state.groups.splice(insertPosition, 0, layerWithPrefix);
+        this._state.groups.push(layerWithPrefix);
 
         // Activate the layer
         if (this._mapboxAPI) {

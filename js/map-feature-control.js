@@ -10,8 +10,10 @@
  * UI uses a panel-based approach similar to 3D control with Shoelace details components.
  */
 
+import { DrawerStateManager } from './drawer-state-manager.js';
 import { GeoUtils } from './map-utils.js';
 import { LayerSettingsModal } from './layer-settings-modal.js';
+import { LayerCreatorUI } from './layer-creator-ui.js';
 import { LayerStyleControl } from './layer-style-control.js';
 
 export class MapFeatureControl {
@@ -28,6 +30,7 @@ export class MapFeatureControl {
 
         this._map = null;
         this._stateManager = null;
+        this.drawerStateManager = new DrawerStateManager();
         this._container = null;
         this._layersContainer = null;
         this._panel = null; // Main panel component
@@ -45,10 +48,6 @@ export class MapFeatureControl {
         // Hover popup management
         this._hoverPopup = null;
         this._currentHoveredFeature = null;
-
-        // Click popups
-        this._clickPopup = null;
-        this._showClickPopups = false; // Default off
 
         // Drawer state tracking via centralized manager
         this._drawerStateListener = null;
@@ -414,34 +413,6 @@ export class MapFeatureControl {
                 animation: layer-flash 0.5s ease-in-out;
             }
 
-            /* Click popup styles */
-            .mapboxgl-popup.click-popup .mapboxgl-popup-content {
-                padding: 0 !important;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-                border-radius: 8px !important;
-            }
-
-            .mapboxgl-popup.click-popup .mapboxgl-popup-close-button {
-                font-size: 20px;
-                padding: 4px 8px;
-                color: #6b7280;
-            }
-
-            .mapboxgl-popup.click-popup .mapboxgl-popup-close-button:hover {
-                background: #f3f4f6;
-                color: #111827;
-            }
-
-            /* Custom HTML content styling */
-            .popup-custom-html a {
-                color: #3b82f6;
-                text-decoration: underline;
-            }
-
-            .popup-custom-html a:hover {
-                color: #2563eb;
-            }
-
         `;
         document.head.appendChild(style);
     }
@@ -629,7 +600,31 @@ export class MapFeatureControl {
     }
 
     /**
-     * Create header actions (Settings menu)
+     * Create Layer Atlas button (left side of header)
+     */
+    _createLayerAtlasButton() {
+        const layerAtlasBtn = document.createElement('button');
+        layerAtlasBtn.className = 'layer-atlas-btn primary-action-btn';
+
+        // Get current atlas name
+        const currentAtlas = window.layerRegistry?._currentAtlas || 'index';
+        const atlasMetadata = window.layerRegistry?.getAtlasMetadata(currentAtlas);
+        const atlasName = atlasMetadata?.name || 'Browse Maps';
+
+        layerAtlasBtn.innerHTML = `
+            <sl-icon name="layers" style="font-size: 14px; margin-right: 6px;"></sl-icon>
+            <span>${atlasName}</span>
+        `;
+
+        layerAtlasBtn.addEventListener('click', () => {
+            this._openLayerDrawer();
+        });
+
+        return layerAtlasBtn;
+    }
+
+    /**
+     * Create header actions (New Data Source, Settings) - Layer Atlas is now separate
      */
     _createHeaderActions() {
         const actions = [];
@@ -722,37 +717,6 @@ export class MapFeatureControl {
         });
 
         menu.appendChild(layerOptionsItem);
-
-        // Feature Popups Toggle Item
-        const popupsItem = document.createElement('sl-menu-item');
-        popupsItem.value = 'feature-popups';
-
-        // Create switch for menu item
-        const popupsSwitch = document.createElement('sl-switch');
-        popupsSwitch.checked = this._showClickPopups;
-        popupsSwitch.size = 'small';
-        popupsSwitch.style.pointerEvents = 'none';
-
-        const popupsLabel = document.createElement('span');
-        popupsLabel.textContent = 'Show Feature Popups';
-        popupsLabel.style.marginLeft = '8px';
-
-        popupsItem.appendChild(popupsSwitch);
-        popupsItem.appendChild(popupsLabel);
-
-        // Handle toggle
-        popupsItem.addEventListener('click', (e) => {
-            e.stopPropagation();
-            popupsSwitch.checked = !popupsSwitch.checked;
-            this._showClickPopups = popupsSwitch.checked;
-        });
-
-        // Sync switch state when menu opens
-        settingsPopover.addEventListener('sl-show', () => {
-            popupsSwitch.checked = this._showClickPopups;
-        });
-
-        menu.appendChild(popupsItem);
         settingsPopover.appendChild(menu);
 
         // Store reference to update later
@@ -790,6 +754,13 @@ export class MapFeatureControl {
 
         // Listen to the global drawer state change event
         window.addEventListener('drawer-state-change', this._drawerStateListener);
+    }
+
+    /**
+     * Open the layer drawer using centralized manager
+     */
+    _openLayerDrawer() {
+        this.drawerStateManager.open();
     }
 
     /**
@@ -950,10 +921,6 @@ export class MapFeatureControl {
                 this._expandLayerForFeatureSelection(data.layerId);
                 // Update layer visual state for selection
                 this._updateLayerVisualState(data.layerId, { hasSelection: true });
-                // Show click popup if enabled
-                if (this._showClickPopups) {
-                    this._showClickPopupForFeature(data);
-                }
                 break;
             case 'feature-click-multiple':
                 // Handle multiple feature selections from overlapping click
@@ -976,11 +943,6 @@ export class MapFeatureControl {
                 clearedLayerIds.forEach(layerId => {
                     this._updateLayerVisualState(layerId, { hasSelection: false });
                 });
-                // Close click popup when selections are cleared
-                if (this._clickPopup) {
-                    this._clickPopup.remove();
-                    this._clickPopup = null;
-                }
                 break;
             case 'feature-close':
                 this._renderLayer(data.layerId);
@@ -1044,12 +1006,6 @@ export class MapFeatureControl {
                     this._scheduleRender();
                 }
                 break;
-            case 'feature-inspection-data':
-                // Update click popup with custom HTML from onClick handler
-                if (this._showClickPopups && this._clickPopup) {
-                    this._updateClickPopupCustomHTML(data.layerId, data.featureId, data.customHTML);
-                }
-                break;
         }
     }
 
@@ -1082,8 +1038,7 @@ export class MapFeatureControl {
         }
 
         // Close the layer list drawer to prevent it from obscuring feature details
-        const drawer = document.querySelector('#map-controls-drawer');
-        if (drawer) drawer.hide();
+        this.drawerStateManager.close();
     }
 
     /**
@@ -1301,24 +1256,19 @@ export class MapFeatureControl {
             }
         }
 
-        // Get active layers from state manager as the source of truth
-        const activeLayers = this._stateManager.getActiveLayers();
-        const activeLayerIds = new Set(activeLayers.keys());
-
-        let configLayerIds = [];
-
         // Use the layers array from config to maintain the exact order specified
         if (this._config.layers && Array.isArray(this._config.layers)) {
-            configLayerIds = this._config.layers
+            return this._config.layers
                 .filter(layer => {
                     // Include all layers that are registered with the state manager (visible layers)
                     return this._getLayerConfig(layer.id) !== undefined;
                 })
                 .map(layer => layer.id);
         }
+
         // Fallback to groups if layers array doesn't exist (older config format)
-        else if (this._config.groups && Array.isArray(this._config.groups)) {
-            configLayerIds = this._config.groups
+        if (this._config.groups && Array.isArray(this._config.groups)) {
+            return this._config.groups
                 .filter(group => {
                     // Include all layers that are registered with the state manager (visible layers)
                     return this._getLayerConfig(group.id) !== undefined;
@@ -1326,13 +1276,9 @@ export class MapFeatureControl {
                 .map(group => group.id);
         }
 
-        // Add any active layers that aren't in the config (cross-atlas layers)
-        const missingLayers = Array.from(activeLayerIds).filter(id => !configLayerIds.includes(id));
-
-        // Combine: config layers first (maintaining order), then missing layers
-        const allLayerIds = [...configLayerIds, ...missingLayers];
-
-        return allLayerIds;
+        // Final fallback
+        const activeLayers = this._stateManager.getActiveLayers();
+        return Array.from(activeLayers.keys());
     }
 
     /**
@@ -1421,29 +1367,6 @@ export class MapFeatureControl {
         collapseIcon.className = 'collapse-indicator';
         header.appendChild(collapseIcon);
 
-        // Atlas Badge (if available)
-        if (config._sourceAtlas && window.layerRegistry) {
-            const atlasMetadata = window.layerRegistry.getAtlasMetadata(config._sourceAtlas);
-            if (atlasMetadata) {
-                const atlasBadge = document.createElement('span');
-                atlasBadge.className = 'atlas-badge';
-                atlasBadge.textContent = atlasMetadata.name || config._sourceAtlas;
-                atlasBadge.style.cssText = `
-                    display: inline-block;
-                    padding: 2px 6px;
-                    margin-right: 6px;
-                    border-radius: 3px;
-                    font-size: 9px;
-                    font-weight: 600;
-                    background-color: ${atlasMetadata.color || '#2563eb'};
-                    color: white;
-                    opacity: 0.85;
-                    flex-shrink: 0;
-                `;
-                header.appendChild(atlasBadge);
-            }
-        }
-
         // Title
         const title = document.createElement('div');
         title.textContent = config.title || config.id;
@@ -1456,18 +1379,10 @@ export class MapFeatureControl {
 
         // Add click handler to header for collapse toggle
         header.addEventListener('click', (e) => {
-            // Don't toggle if clicking on actions
             if (e.target.closest('.layer-actions')) {
                 return;
             }
-            // Don't toggle if clicking on tab elements that might be overlapping
-            if (e.target.closest('sl-tab, sl-tab-group, sl-tab-panel')) {
-                return;
-            }
-            // Only toggle if we're actually clicking on the header itself
-            if (e.target === header || e.target.closest('.layer-card-header') === header) {
-                this._toggleLayerCollapse(layerId, layerCard);
-            }
+            this._toggleLayerCollapse(layerId, layerCard);
         });
 
         layerCard.appendChild(header);
@@ -1849,11 +1764,8 @@ export class MapFeatureControl {
 
         actionsContainer.appendChild(settingsBtn);
 
-        // Zoom Button - show if layer has bbox, or if its atlas has bbox (but not for global layers)
-        const hasBbox = config.bbox || config.metadata?.bbox || this._getAtlasBbox(config);
-        const isGlobal = this._isGlobalLayer(config);
-
-        if (hasBbox && !isGlobal) {
+        // Zoom Button
+        if (config.bbox || config.metadata?.bbox) {
             const zoomBtn = document.createElement('sl-icon-button');
             zoomBtn.name = 'zoom-in';
             zoomBtn.label = 'Zoom to layer';
@@ -2053,82 +1965,11 @@ export class MapFeatureControl {
     }
 
     /**
-     * Get atlas bbox for a layer
-     */
-    _getAtlasBbox(config) {
-        if (!window.layerRegistry || !config._sourceAtlas) return null;
-
-        const atlasMetadata = window.layerRegistry.getAtlasMetadata(config._sourceAtlas);
-        if (atlasMetadata && atlasMetadata.bbox) {
-            return atlasMetadata.bbox;
-        }
-
-        return null;
-    }
-
-    /**
-     * Check if a layer is a global/world layer
-     */
-    _isGlobalLayer(config) {
-        // Check atlas name for global indicators
-        if (config._sourceAtlas) {
-            const atlasName = config._sourceAtlas.toLowerCase();
-            if (atlasName.includes('world') || atlasName.includes('global') ||
-                atlasName.includes('mapbox') || atlasName.includes('osm')) {
-                return true;
-            }
-
-            // Also check atlas metadata
-            if (window.layerRegistry) {
-                const atlasMetadata = window.layerRegistry.getAtlasMetadata(config._sourceAtlas);
-                if (atlasMetadata && atlasMetadata.name) {
-                    const metadataName = atlasMetadata.name.toLowerCase();
-                    if (metadataName.includes('world') || metadataName.includes('global') ||
-                        metadataName.includes('mapbox') || metadataName.includes('osm')) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        // Check if layer type is a Mapbox style layer
-        if (config.type === 'style' || config.type === 'raster-style-layer') {
-            return true;
-        }
-
-        // Check if layer ID suggests it's global
-        const layerId = (config.id || '').toLowerCase();
-        if (layerId.startsWith('mapbox-') || layerId.startsWith('osm-') ||
-            layerId.includes('world-') || layerId.includes('global-')) {
-            return true;
-        }
-
-        // Check if bbox covers entire world
-        let bbox = config.bbox || config.metadata?.bbox;
-        if (bbox) {
-            const bboxArray = typeof bbox === 'string' ? bbox.split(',').map(parseFloat) : bbox;
-            if (bboxArray.length === 4) {
-                const [west, south, east, north] = bboxArray;
-                // Check if it's close to world bounds
-                if (west <= -170 && east >= 170 && south <= -80 && north >= 80) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Zoom to layer bounds using bbox
      */
     _zoomToLayerBounds(layerId, config) {
-        // Get bbox from layer, metadata, or atlas (in that order)
-        let bbox = config.bbox || config.metadata?.bbox;
-
-        if (!bbox) {
-            bbox = this._getAtlasBbox(config);
-        }
+        // Get bbox from either direct property or metadata
+        const bbox = config.bbox || config.metadata?.bbox;
 
         if (!bbox || !this._map) {
             console.warn('No bbox available for layer or map not initialized');
@@ -2136,28 +1977,15 @@ export class MapFeatureControl {
         }
 
         // Check if bbox is valid (not unrectified map)
-        const isInvalidBbox = (typeof bbox === 'string' && bbox === "0.0,0.0,0.0,0.0") ||
-                              (Array.isArray(bbox) && bbox.every(v => v === 0 || v === '0.0'));
-
-        if (isInvalidBbox) {
+        if (bbox === "0.0,0.0,0.0,0.0") {
             console.log('Cannot zoom: layer has no valid bbox (unrectified map)');
             this._showToast('Cannot zoom to layer: no valid geographic bounds available', 'warning');
             return;
         }
 
         try {
-            let minLng, minLat, maxLng, maxLat;
-
-            // Parse bbox - handle both string and array formats
-            if (typeof bbox === 'string') {
-                [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(parseFloat);
-            } else if (Array.isArray(bbox) && bbox.length === 4) {
-                [minLng, minLat, maxLng, maxLat] = bbox;
-            } else {
-                console.warn('Invalid bbox format:', bbox);
-                this._showToast('Cannot zoom to layer: invalid bbox format', 'error');
-                return;
-            }
+            // Parse bbox string "minLng,minLat,maxLng,maxLat"
+            const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(parseFloat);
 
             // Validate coordinates
             if (isNaN(minLng) || isNaN(minLat) || isNaN(maxLng) || isNaN(maxLat)) {
@@ -4369,17 +4197,14 @@ export class MapFeatureControl {
             }
         });
 
-        // Set up global mousemove handler for better performance (skip on touch devices)
-        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        if (!isTouchDevice) {
-            this._map.on('mousemove', (e) => {
-                // Use queryRenderedFeatures with deduplication for optimal performance
-                this._handleMouseMoveWithQueryRendered(e);
+        // Set up global mousemove handler for better performance
+        this._map.on('mousemove', (e) => {
+            // Use queryRenderedFeatures with deduplication for optimal performance
+            this._handleMouseMoveWithQueryRendered(e);
 
-                // Update hover popup position to follow mouse smoothly
-                this._updateHoverPopupPosition(e.lngLat);
-            });
-        }
+            // Update hover popup position to follow mouse smoothly
+            this._updateHoverPopupPosition(e.lngLat);
+        });
 
         // Set up global mouseleave handler for the entire map
         this._map.on('mouseleave', () => {
@@ -4695,12 +4520,6 @@ export class MapFeatureControl {
         this._removeHoverPopup();
         this._currentHoveredFeature = null;
 
-        // Clean up click popup
-        if (this._clickPopup) {
-            this._clickPopup.remove();
-            this._clickPopup = null;
-        }
-
         // Reset cursor to default grab state
         this._updateCursorForFeatures([]);
 
@@ -4866,169 +4685,6 @@ export class MapFeatureControl {
         if (this._hoverPopup) {
             this._hoverPopup.remove();
             this._hoverPopup = null;
-        }
-    }
-
-    /**
-     * Show click popup for a selected feature
-     */
-    _showClickPopupForFeature(data) {
-        const { layerId, feature, lngLat } = data;
-
-        // Remove existing click popup
-        if (this._clickPopup) {
-            this._clickPopup.remove();
-            this._clickPopup = null;
-        }
-
-        // Get layer config
-        const layerConfig = this._getLayerConfig(layerId);
-        if (!layerConfig) return;
-
-        // Create popup content with standardized layout
-        const content = this._createClickPopupContent(layerId, feature, layerConfig);
-
-        // Create and show popup
-        this._clickPopup = new mapboxgl.Popup({
-            closeButton: true,
-            closeOnClick: false,
-            className: 'click-popup',
-            maxWidth: '350px'
-        })
-            .setLngLat(lngLat || [feature.geometry.coordinates[0], feature.geometry.coordinates[1]])
-            .setDOMContent(content)
-            .addTo(this._map);
-
-        // Listen for popup close to clean up
-        this._clickPopup.on('close', () => {
-            this._clickPopup = null;
-        });
-    }
-
-    /**
-     * Create click popup content with standardized layout:
-     * 1. Feature Heading
-     * 2. Custom HTML (if available)
-     * 3. Metadata table
-     */
-    _createClickPopupContent(layerId, feature, layerConfig) {
-        const container = document.createElement('div');
-        container.className = 'click-popup-content';
-        container.style.cssText = `
-            background: white;
-            border-radius: 6px;
-            padding: 12px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 11px;
-            line-height: 1.4;
-            color: #111827;
-        `;
-
-        const inspect = layerConfig.inspect || {};
-        const properties = feature.properties || {};
-
-        // 1. Feature Heading
-        const headerDiv = document.createElement('div');
-        headerDiv.style.cssText = `
-            font-size: 13px;
-            font-weight: 600;
-            color: #111827;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e5e7eb;
-        `;
-
-        let headerLabel = 'Feature ID';
-        let headerValue = this._getFeatureId(feature);
-
-        if (inspect.title && inspect.label) {
-            headerLabel = inspect.title;
-            headerValue = properties[inspect.label] || headerValue;
-        } else if (inspect.id) {
-            headerValue = properties[inspect.id] || headerValue;
-        }
-
-        headerDiv.innerHTML = `<span style="color: #6b7280;">${headerLabel}:</span> <span style="color: #111827;">${headerValue}</span>`;
-        container.appendChild(headerDiv);
-
-        // 2. Custom HTML placeholder (will be populated by onClick handler)
-        const customHTMLDiv = document.createElement('div');
-        customHTMLDiv.className = 'popup-custom-html';
-        customHTMLDiv.id = `popup-custom-${layerId}-${this._getFeatureId(feature)}`;
-        customHTMLDiv.style.cssText = `
-            margin-bottom: 12px;
-            font-size: 11px;
-            color: #374151;
-        `;
-        container.appendChild(customHTMLDiv);
-
-        // 3. Metadata table (inspect fields)
-        if (inspect.fields && inspect.fields.length > 0) {
-            const tableDiv = document.createElement('div');
-            tableDiv.style.cssText = `
-                font-size: 11px;
-                border: 1px solid #e5e7eb;
-                border-radius: 4px;
-                overflow: hidden;
-            `;
-
-            const table = document.createElement('table');
-            table.style.cssText = `
-                width: 100%;
-                border-collapse: collapse;
-            `;
-
-            inspect.fields.forEach((fieldName, index) => {
-                const value = properties[fieldName];
-                if (value !== null && value !== undefined && value !== '') {
-                    const fieldTitle = (inspect.fieldTitles && inspect.fieldTitles[index]) || fieldName;
-                    const row = document.createElement('tr');
-                    row.style.cssText = `
-                        border-bottom: 1px solid #f3f4f6;
-                    `;
-
-                    const keyCell = document.createElement('td');
-                    keyCell.style.cssText = `
-                        padding: 6px 8px;
-                        font-weight: 600;
-                        color: #6b7280;
-                        width: 40%;
-                        border-right: 1px solid #f3f4f6;
-                        background: #f9fafb;
-                    `;
-                    keyCell.textContent = fieldTitle;
-
-                    const valueCell = document.createElement('td');
-                    valueCell.style.cssText = `
-                        padding: 6px 8px;
-                        color: #374151;
-                        word-break: break-word;
-                    `;
-                    valueCell.textContent = String(value);
-
-                    row.appendChild(keyCell);
-                    row.appendChild(valueCell);
-                    table.appendChild(row);
-                }
-            });
-
-            tableDiv.appendChild(table);
-            container.appendChild(tableDiv);
-        }
-
-        return container;
-    }
-
-    /**
-     * Update click popup with custom HTML from onClick handler
-     */
-    _updateClickPopupCustomHTML(layerId, featureId, customHTML) {
-        if (!this._clickPopup) return;
-
-        const customHTMLDiv = document.getElementById(`popup-custom-${layerId}-${featureId}`);
-        if (customHTMLDiv && customHTML) {
-            customHTMLDiv.innerHTML = customHTML;
-            customHTMLDiv.style.display = 'block';
         }
     }
 

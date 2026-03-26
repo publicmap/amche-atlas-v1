@@ -1,18 +1,19 @@
-import { URLManager } from './url-manager.js';
-import { TimeControl } from './time-control.js';
-import { MapLayerControl } from './map-layer-controls.js';
-import { LayerOrderManager } from './layer-order-manager.js';
-import { StatePersistence } from './state-persistence.js';
-import { MapSearchControl } from './map-search-control.js';
-import { MapExportControl } from './map-export-control.js';
-import { Terrain3DControl } from './terrain-3d-control.js';
-import { MapFeatureControl } from './map-feature-control-iframe.js';
-import { MapBrowserControl } from './map-browser-control.js';
-import { MapAttributionControl } from './map-attribution-control.js';
-import { ButtonExternalMapLinks } from './button-external-map-links.js';
-import { MapFeatureStateManager } from './map-feature-state-manager.js';
-import { ButtonGeolocationManager } from './button-geolocation-manager.js';
-import { DataUtils, MapUtils, URLUtils } from './map-utils.js';
+import {URLManager} from './url-manager.js';
+import {TimeControl} from './time-control.js';
+import {ButtonShareLink} from './button-share-link.js';
+import {MapLayerControl} from './map-layer-controls.js';
+import {StatePersistence} from './state-persistence.js';
+import {MapSearchControl} from './map-search-control.js';
+import {MapExportControl} from './map-export-control.js';
+import {Terrain3DControl} from './terrain-3d-control.js';
+import {MapFeatureControl} from './map-feature-control.js';
+import {MapBrowserControl} from './map-browser-control.js';
+import {ButtonResetMapView} from './button-reset-map-view.js';
+import {MapAttributionControl} from './map-attribution-control.js';
+import {ButtonExternalMapLinks} from './button-external-map-links.js';
+import {MapFeatureStateManager} from './map-feature-state-manager.js';
+import {ButtonGeolocationManager} from './button-geolocation-manager.js';
+import {DataUtils, MapUtils, URLUtils} from './map-utils.js';
 
 export class MapInitializer {
     // Function to load configuration
@@ -27,7 +28,6 @@ export class MapInitializer {
         let configPath = window.amche.DEFAULT_ATLAS;
         let config;
         let atlasId = 'index'; // Track which atlas we're using
-        let isImportedAtlas = false; // Track if this is an imported atlas
 
         // If a config parameter is provided, determine how to handle it
         if (configParam) {
@@ -68,8 +68,7 @@ export class MapInitializer {
             // Check if the config parameter is a URL
             else if (configParam.startsWith('http://') || configParam.startsWith('https://')) {
                 configPath = configParam; // Use the URL directly
-                atlasId = 'imported'; // Mark as imported atlas
-                isImportedAtlas = true; // Flag as imported
+                atlasId = 'custom'; // Mark as custom atlas
             } else {
                 configPath = `config/${configParam}.atlas.json`; // Treat as local file
                 atlasId = configParam; // Use the config name as atlas ID
@@ -85,31 +84,12 @@ export class MapInitializer {
         // Set current atlas in registry
         layerRegistry.setCurrentAtlas(atlasId);
 
-        // Mark as imported atlas if loaded via URL
-        if (isImportedAtlas) {
-            // Store the imported atlas metadata with '*' prefix and register layers
-            const atlasName = config.name || 'Imported Map';
-            layerRegistry.markImportedAtlas(atlasId, {
-                name: `* ${atlasName}`,
-                originalName: atlasName,
-                color: config.color || '#059669',
-                areaOfInterest: config.areaOfInterest || '',
-                description: config.description || '',
-                bbox: layerRegistry._extractBbox(config),
-                isImported: true,
-                sourceUrl: configPath
-            }, config);
-        }
-
         // Parse layers from URL parameter if provided
-        console.log('🔍 Checking layersParam:', layersParam);
         if (layersParam) {
             const urlLayers = URLUtils.parseLayersFromUrl(layersParam);
-            console.log('🔍 Parsed URL layers:', urlLayers.map(l => l.id));
 
             // Set URL layers to be visible by default and maintain order
             if (urlLayers.length > 0) {
-                console.log('🔍 Processing', urlLayers.length, 'URL layers');
                 // Set initiallyChecked to true for all URL layers
                 const processedUrlLayers = urlLayers.map(layer => ({
                     ...layer,
@@ -173,42 +153,56 @@ export class MapInitializer {
                     window.history.replaceState({}, '', newUrl);
                 }
 
-                // Keep layers in URL/visual order (first = top)
-                // The conversion to map rendering order will happen when layers are added to the map
-                console.log('🔍 Processing URL layers (keeping in visual order):');
-                console.log('  URL order:', processedUrlLayers.map(l => l.id));
+                // Merge URL layers while preserving the original config order and respecting URL ordering
+                const urlLayersMap = new Map(processedUrlLayers.map(l => [l.id, l]));
 
-                // Build final layers array by merging with existing config
-                const finalLayers = [];
+                // Build final layers array
+                const finalLayers = [...existingLayers];
 
-                // Add URL layers in URL/visual order (first = top)
-                processedUrlLayers.forEach(urlLayer => {
-                    // Find matching layer in existing config to merge properties
-                    const existingLayer = existingLayers.find(layer => layer.id === urlLayer.id);
+                // Process URL layers in the order they appear in the URL
+                let lastInsertedIndex = -1;
 
-                    if (existingLayer) {
-                        // Merge existing layer with URL layer properties
-                        finalLayers.push({
-                            ...existingLayer,
+                processedUrlLayers.forEach((urlLayer, urlIndex) => {
+                    const existingIndex = finalLayers.findIndex(layer => layer.id === urlLayer.id);
+
+                    if (existingIndex !== -1) {
+                        // Merge existing layer with URL layer properties (preserving all config properties while adding URL-specific ones)
+                        finalLayers[existingIndex] = {
+                            ...finalLayers[existingIndex],
                             ...urlLayer,
                             // Ensure critical URL properties are preserved
                             ...(urlLayer._originalJson && { _originalJson: urlLayer._originalJson }),
                             ...(urlLayer.initiallyChecked !== undefined && { initiallyChecked: urlLayer.initiallyChecked }),
                             ...(urlLayer.opacity !== undefined && { opacity: urlLayer.opacity })
-                        });
+                        };
+                        lastInsertedIndex = existingIndex;
                     } else {
-                        // New layer not in existing config
-                        finalLayers.push(urlLayer);
-                    }
-                });
+                        // This is a new layer - insert it in the right position based on URL order
+                        let insertPosition;
 
-                // Add any remaining layers from existing config that weren't in URL (set to not initially checked)
-                existingLayers.forEach(layer => {
-                    if (!urlLayerIds.has(layer.id)) {
-                        finalLayers.push({
-                            ...layer,
-                            initiallyChecked: false
-                        });
+                        if (lastInsertedIndex !== -1) {
+                            // Insert after the last processed URL layer
+                            insertPosition = lastInsertedIndex + 1;
+                        } else {
+                            // First new layer - find where to insert based on previous URL layers
+                            let insertAfterIndex = -1;
+
+                            // Look for the previous URL layer in the URL list
+                            for (let i = urlIndex - 1; i >= 0; i--) {
+                                const prevUrlLayer = processedUrlLayers[i];
+                                const prevLayerIndex = finalLayers.findIndex(layer => layer.id === prevUrlLayer.id);
+                                if (prevLayerIndex !== -1) {
+                                    insertAfterIndex = prevLayerIndex;
+                                    break;
+                                }
+                            }
+
+                            insertPosition = insertAfterIndex !== -1 ? insertAfterIndex + 1 : 0;
+                        }
+
+                        // Insert the new layer
+                        finalLayers.splice(insertPosition, 0, urlLayer);
+                        lastInsertedIndex = insertPosition;
                     }
                 });
 
@@ -250,8 +244,15 @@ export class MapInitializer {
                     }
 
                     if (resolvedLayer) {
+                        // Debug: Check if resolvedLayer has type
                         if (!resolvedLayer.type) {
                             console.warn(`[LayerRegistry] Resolved layer ${layerConfig.id} from registry is missing type property. Registry entry:`, resolvedLayer);
+                        }
+
+                        // Debug: Check proxy settings before merge
+                        if (layerConfig.id && layerConfig.id.includes('bhuvan')) {
+                            console.log(`[DEBUG] Before merge - layerConfig:`, { id: layerConfig.id, hasProxyUrl: !!layerConfig.proxyUrl, opacity: layerConfig.opacity });
+                            console.log(`[DEBUG] Before merge - resolvedLayer:`, { id: resolvedLayer.id, hasProxyUrl: !!resolvedLayer.proxyUrl, proxyUrl: resolvedLayer.proxyUrl, proxyReferer: resolvedLayer.proxyReferer });
                         }
 
                         // Merge the resolved layer with any custom overrides from config
@@ -280,6 +281,11 @@ export class MapInitializer {
                             _normalizedId: layerRegistry.normalizeLayerId(layerConfig.id, atlasId)
                         };
 
+                        // Debug: Check proxy settings after merge
+                        if (layerConfig.id && layerConfig.id.includes('bhuvan')) {
+                            console.log(`[DEBUG] After merge:`, { id: mergedLayer.id, hasProxyUrl: !!mergedLayer.proxyUrl, proxyUrl: mergedLayer.proxyUrl, proxyReferer: mergedLayer.proxyReferer });
+                        }
+
                         // Verify the merge preserved important properties
                         if (!mergedLayer.title) {
                             console.warn(`[LayerRegistry] Cross-atlas layer ${layerConfig.id} from ${resolvedLayer._sourceAtlas} atlas missing title after merge (this is unusual)`);
@@ -301,6 +307,7 @@ export class MapInitializer {
                         }
                     }
                 } else {
+                    // If it's a fully defined layer, return as is
                     validLayers.push(layerConfig);
                 }
             }
@@ -388,7 +395,6 @@ export class MapInitializer {
     static async initializeMap() {
         const config = await this.loadConfiguration();
         const layers = config.layers || [];
-        console.log('🔍 Final layers for MapLayerControl:', layers.filter(l => l.initiallyChecked).map(l => l.id));
 
         // Apply defaults from config.defaults.map first
         if (config.defaults && config.defaults.map) {
@@ -414,27 +420,6 @@ export class MapInitializer {
             MapUtils.initializeSlotLayers(map);
 
             // Add debugging method to global scope
-            window.verifyLayerOrder = () => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const layersParam = urlParams.get('layers');
-                if (!layersParam) {
-                    console.error('No layers parameter in URL');
-                    return;
-                }
-                const urlLayers = layersParam.split(',').map(id => ({ id: id.trim() }));
-                const result = LayerOrderManager.verifyLayerOrder(map, urlLayers);
-                console.group('🔍 Layer Order Verification');
-                console.log(result.message);
-                console.log('URL order (first = on top):', result.urlOrder);
-                console.log('Visual order (first = on bottom):', result.visualOrder);
-                console.log('Expected visual order:', result.expectedOrder);
-                console.log('Slots:', result.slots);
-                if (!result.valid) {
-                    console.error('❌ Mismatch detected!');
-                }
-                console.groupEnd();
-                return result;
-            };
 
             const canvas = map.getCanvas();
 
@@ -487,32 +472,27 @@ export class MapInitializer {
             // Initialize the feature control with state manager and config
             window.featureControl = new MapFeatureControl();
 
-            // Add map browser control to header instead of map
-            window.browserControl = new MapBrowserControl();
-            const browserControlContainer = document.getElementById('map-browser-control-container');
-            if (browserControlContainer) {
-                const controlElement = window.browserControl.onAdd(map);
-                browserControlContainer.appendChild(controlElement);
-            }
-
-            // Add geolocation control to header instead of map
-            window.geolocationControl = new ButtonGeolocationManager();
-            const geolocationControlContainer = document.getElementById('geolocation-control-container');
-            if (geolocationControlContainer) {
-                const controlElement = window.geolocationControl.onAdd(map);
-                geolocationControlContainer.appendChild(controlElement);
-            }
+            map.addControl(new MapBrowserControl(), 'top-left');
+            map.addControl(new ButtonGeolocationManager(), 'top-left');
             map.addControl(window.featureControl, 'top-right');
             map.addControl(new TimeControl(), 'top-right');
             map.addControl(window.terrain3DControl, 'top-right');
+            map.addControl(new ButtonResetMapView(), 'top-right');
             map.addControl(window.attributionControl, 'bottom-right');
             map.addControl(new MapExportControl(), 'bottom-right');
             map.addControl(new ButtonExternalMapLinks(), 'bottom-right');
             map.addControl(new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }));
             map.addControl(new mapboxgl.ScaleControl(), 'bottom-left');
+            map.addControl(new ButtonShareLink({
+                url: () => window.location.href,
+                showToast: true,
+                qrCodeSize: 500
+            }), 'bottom-right');
 
-            // Initialize feature control (panel starts collapsed)
+            // Show feature control panel by default on initial load
+            // Show feature control panel by default on initial load
             window.featureControl.initialize(stateManager, config);
+            window.featureControl._showPanel();
 
             // Initialize 3D control from URL parameters after URL manager is ready
             window.terrain3DControl.initializeFromURL();
@@ -527,9 +507,6 @@ export class MapInitializer {
 
             // Make URL manager globally accessible
             window.urlManager = urlManager;
-
-            // Connect URL manager with state manager for feature selection URL sync
-            urlManager.setStateManager(stateManager);
 
             // Apply URL parameters (including geolocate parameter)
             // Skip URL parameter application if state was restored from localStorage
@@ -547,39 +524,6 @@ export class MapInitializer {
 
             // Make URL manager globally accessible for ShareLink
             window.urlManager = urlManager;
-
-            // Update attribution with location name on map movement
-            let reverseGeocodeTimeout;
-            const updateAttributionLocation = async () => {
-                try {
-                    const center = map.getCenter();
-                    const zoom = map.getZoom();
-                    const latRounded = Math.round(center.lat * 100000) / 100000;
-                    const lngRounded = Math.round(center.lng * 100000) / 100000;
-                    const nominatimZoom = Math.max(0, Math.min(18, Math.round(zoom)));
-                    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latRounded}&lon=${lngRounded}&zoom=${nominatimZoom}&addressdetails=1`;
-
-                    const response = await fetch(url, {
-                        headers: { 'User-Agent': 'AMChe-Goa-Map/1.0' }
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.display_name && window.attributionControl) {
-                            window.attributionControl.setLocation(data.display_name);
-                        }
-                    }
-                } catch (e) {
-                    console.debug('Reverse geocoding failed', e);
-                }
-            };
-
-            map.on('moveend', () => {
-                clearTimeout(reverseGeocodeTimeout);
-                reverseGeocodeTimeout = setTimeout(updateAttributionLocation, 1000);
-            });
-
-            updateAttributionLocation();
 
             // Only set camera position if there's no hash in URL
             if (!window.location.hash) {
@@ -697,18 +641,6 @@ export class MapInitializer {
                 detail: { map: map }
             });
             window.dispatchEvent(mapReadyEvent);
-
-            // Hide loading overlay after initialization is complete
-            requestAnimationFrame(() => {
-                const loadingOverlay = document.getElementById('loading-overlay');
-                if (loadingOverlay) {
-                    loadingOverlay.style.opacity = '0';
-                    loadingOverlay.style.transition = 'opacity 0.3s ease';
-                    setTimeout(() => {
-                        loadingOverlay.style.display = 'none';
-                    }, 300);
-                }
-            });
         });
     }
 

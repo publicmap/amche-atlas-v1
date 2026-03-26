@@ -1,20 +1,10 @@
 {
-  "name": "OpenStreetMap",
-  "description": "Freely editable map of the world by <a href='https://openstreetmap.org/'>OpenStreetMap contributors</a>. Join your <a href='https://openstreetmap.community'>community</a>",
-  "areaOfInterest": "Global",
-  "headerImage": "assets/map-layers/osm/map-layer-osm.png",
-  "tags": [
-    "opendata"
-  ],
+  "name": "OpenStreetMap Project",
+  "areaOfInterest": "World",
   "version": "0.1.0",
   "url": "https://github.com/publicmap/amche-goa/blob/main/config/osm.atlas.json",
   "color": "#16a34a",
-  "bbox": [
-    -180,
-    -90,
-    180,
-    90
-  ],
+  "bbox": [-180, -90, 180, 90],
   "map": {
     "center": [
       76,
@@ -49,24 +39,6 @@
       "maxzoom": 14,
       "attribution": "<a href='https://www.openstreetmap.org/#map=16/15.49493/73.82864'>© OpenStreetMap contributors</a> via <a href='https://tiles.openstreetmap.us/vector/openmaptiles/#map=12/40.781/-73.965'>OSM US OpenMapTiles</a>",
       "style": {
-        "text-field": [
-          "step",
-          [
-            "zoom"
-          ],
-          [
-            "get",
-            "icao"
-          ],
-          13,
-          [
-            "to-string",
-            [
-              "get",
-              "name"
-            ]
-          ]
-        ],
         "circle-radius": [
           "match",
           [
@@ -74,13 +46,11 @@
             "kind"
           ],
           [
-            "station",
-            "aerodrome"
+            "station","aerodrome"
           ],
           8,
           [
-            "bus_station",
-            "ferry_terminal"
+            "bus_station","ferry_terminal"
           ],
           5,
           [
@@ -94,16 +64,7 @@
         "circle-stroke-color": "#ffffff"
       },
       "inspect": {
-        "id": "name",
-        "title": "Airport",
-        "label": "name",
-        "fields": [
-          "name_en",
-          "name_int",
-          "iata",
-          "icao",
-          "class"
-        ]
+        "id": "name"
       }
     },
     {
@@ -123,13 +84,11 @@
             "kind"
           ],
           [
-            "station",
-            "aerodrome"
+            "station","aerodrome"
           ],
           8,
           [
-            "bus_station",
-            "ferry_terminal"
+            "bus_station","ferry_terminal"
           ],
           5,
           [
@@ -179,6 +138,7 @@
     {
       "title": "Railways",
       "description": "Railway network data from the OpenStreetMap project. See <a href='https://wiki.openstreetmap.org/wiki/India/Tags/Highway'>OpenStreetMap India Wiki</a> for details.",
+      "headerImage": "assets/map-layers/osm/map-layer-osm-railways.png",
       "type": "vector",
       "id": "railways",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -244,6 +204,7 @@
     {
       "title": "Pedestrian Paths and Trails",
       "description": "Footpaths and trails from the OpenStreetMap project. See <a href='https://wiki.openstreetmap.org/wiki/India/Tags/Highway'>OpenStreetMap India Wiki</a> for details.",
+      "headerImage": "assets/map-layers/osm/map-layer-osm-paths.png",
       "type": "vector",
       "id": "paths",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -296,6 +257,7 @@
     {
       "title": "Motorable Roads",
       "description": "Road network data from the OpenStreetMap project. See <a href='https://wiki.openstreetmap.org/wiki/India/Tags/Highway'>OpenStreetMap India Wiki</a> for details.",
+      "headerImage": "assets/map-layers/osm/map-layer-osm-roads.png",
       "type": "vector",
       "id": "roads",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -508,6 +470,7 @@
         "id": "name"
       }
     },
+
     {
       "id": "historic-boundaries",
       "title": "Historic Boundaries",
@@ -542,6 +505,7 @@
     {
       "title": "Water Bodies",
       "description": "Water body polygons data from the OpenStreetMap project. See <a href='https://wiki.openstreetmap.org/wiki/India/Tags/Highway'>OpenStreetMap India Wiki</a> for details.",
+      "headerImage": "assets/map-layers/map-layer-osm-waterways.png",
       "type": "vector",
       "id": "waterbodies",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -567,6 +531,7 @@
     {
       "title": "Waterways",
       "description": "Waterways network data from the OpenStreetMap project. See <a href='https://wiki.openstreetmap.org/wiki/India/Tags/Highway'>OpenStreetMap India Wiki</a> for details.",
+      "headerImage": "assets/map-layers/map-layer-osm-waterways.png",
       "type": "vector",
       "id": "waterways",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -622,6 +587,7 @@
     {
       "title": "OSM Landuse Sites",
       "description": "High resolution landuse polygons for institutional sites and amenities from the OpenStreetMap project.",
+      "headerImage": "assets/map-layers/osm/osm/map-layer-osm-landuse.png",
       "type": "vector",
       "id": "sites",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -778,6 +744,7 @@
     {
       "title": "OSM Landuse",
       "description": "High resolution landuse polygons from the OpenStreetMap project.",
+      "headerImage": "assets/map-layers/map-layer-osm-landuse.png",
       "type": "vector",
       "id": "landuse",
       "url": "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt",
@@ -1050,12 +1017,9 @@
       }
     },
     {
-      "tags": [
-        "basemap"
-      ],
       "id": "mapnik",
-      "title": "OpenStreetMap Carto",
-      "description": "Map data contributed by the <a href='https://www.openstreetmap.in/'>OpenStreetMap India Community</a> rendered in the deafult <a href='https://wiki.openstreetmap.org/wiki/OpenStreetMap_Carto'>OSM Carto style</a>",
+      "title": "OpenStreetMap",
+      "description": "Map data contributed by the <a href='https://www.openstreetmap.in/'>OpenStreetMap India Community.</a>",
       "headerImage": "assets/map-layers/osm/map-layer-osm.png",
       "type": "tms",
       "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -1081,6 +1045,10 @@
           0
         ]
       }
+    },
+    {
+      "initiallyChecked": true,
+      "id": "mapbox-satellite"
     }
   ]
 }
