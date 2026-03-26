@@ -7,15 +7,15 @@
 const CACHE_NAME = 'amche-goa-v1';
 
 const ASSETS_TO_CACHE = [
-    '/',
-    '/index.html',
-    '/offline.html',
-    '/css/styles.css',
-    '/css/layer-interactions.css',
-    '/config/_defaults.json',
-    '/js/main.bundle.js',
-    '/assets/img/icon-192x192.png',
-    '/assets/img/icon-512x512.png',
+    '/v1/',
+    '/v1/index.html',
+    '/v1/offline.html',
+    '/v1/css/styles.css',
+    '/v1/css/layer-interactions.css',
+    '/v1/config/_defaults.json',
+    '/v1/js/main.bundle.js',
+    '/v1/assets/img/icon-192x192.png',
+    '/v1/assets/img/icon-512x512.png',
 
     'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4',
     'https://cdn.jsdelivr.net/npm/marked@14.1.3/marked.min.js',
@@ -102,13 +102,13 @@ self.addEventListener('fetch', (event) => {
                     .catch(() => {
                         // Fallback for image requests
                         if (event.request.url.match(/\.(jpg|jpeg|png|gif|svg)$/)) {
-                            return caches.match('/assets/img/offline-image.png')
+                            return caches.match('/v1/assets/img/offline-image.png')
                                 .catch(() => new Response('Image not available offline', {status: 404}));
                         }
                         // Return the offline page for HTML requests
                         if (event.request.headers.get('Accept') &&
                             event.request.headers.get('Accept').includes('text/html')) {
-                            return caches.match('/offline.html')
+                            return caches.match('/v1/offline.html')
                                 .catch(() => new Response('Offline content not available', {status: 503}));
                         }
 
