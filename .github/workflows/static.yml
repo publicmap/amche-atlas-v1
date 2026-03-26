@@ -56,9 +56,9 @@ jobs:
       # Copy main branch build to deploy directory
       - name: Copy main branch content to deploy directory
         run: |
-          mkdir -p deploy/v1
-          rsync -av temp_main/dist/ deploy/v1/
-          echo '<meta http-equiv="refresh" content="0;url=/v1/">' > deploy/index.html
+          mkdir -p deploy
+          # Copy the contents of dist/ to deploy/
+          rsync -av temp_main/dist/ deploy/
 
       # Check if dev branch exists before attempting to fetch
       - name: Check if dev branch exists
